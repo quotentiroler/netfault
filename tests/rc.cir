@@ -1,0 +1,6 @@
+* Single-pole RC low-pass, whose answer is known in closed form.
+* fc = 1/(2*pi*R*C) = 1000 Hz exactly.
+V1 in 0 AC 1
+R1 in out 1k
+C1 out 0 159.1549n
+.end

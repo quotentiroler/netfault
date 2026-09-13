@@ -1,0 +1,11 @@
+* Three-pole passive RC ladder.  Generic on purpose: the point of this
+* tool is that it knows nothing about what the circuit is for.
+V1 in 0 AC 1
+R1 in a 10k
+C1 a 0 10n
+R2 a b 22k
+C2 b 0 4.7n
+R3 b out 4.7k
+C3 out 0 1n
+RL out 0 100k
+.end
