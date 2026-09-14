@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.9"
+# dependencies = ["numpy>=1.20", "sounddevice>=0.4"]
+# ///
 #
 # Diagnose a board on the desk.
 #
@@ -179,8 +183,8 @@ def main():
             print("  %s is %s  (%s - check the joint, check for a bridge)"
                   % (v["ref"], d, parts[v["ref"]]["raw"]))
         else:
-            print("  %s at %s nominal (%.3g -> %.3g)"
-                  % (v["ref"], d, parts[v["ref"]]["value"],
+            print("  %s at %gx nominal (%.3g -> %.3g)"
+                  % (v["ref"], v["factor"], parts[v["ref"]]["value"],
                      parts[v["ref"]]["value"] * v["factor"]))
         print("  %.4f dB residual, %.4f dB clear of the next answer"
               % (v["residual"], v["margin"]))

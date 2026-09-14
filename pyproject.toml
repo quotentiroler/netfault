@@ -21,6 +21,10 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
 ]
 
+[dependency-groups]
+# uv sync picks these up; the library itself needs none of them.
+dev = ["sounddevice>=0.4"]
+
 [project.optional-dependencies]
 # Only the bench example needs a sound device; the library and the tests
 # do not, which is the point of the play_record seam.

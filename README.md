@@ -13,6 +13,26 @@ localise  (inject a fault, then find it)
   a correct board is called correct                ok  named None
 ```
 
+## Running it
+
+With [uv](https://docs.astral.sh/uv/), nothing to install and no venv to make:
+
+```bash
+uv run examples/bench.py examples/breadboard.cir --simulate --fault C2:4.7
+```
+
+The script carries its own dependencies inline (PEP 723), so that command
+works on a fresh clone. For the library:
+
+```bash
+uv pip install -e .          # or: pip install -e .
+uv run tests/run.py
+```
+
+`numpy` is the only runtime dependency. `sounddevice` is needed just by
+the bench example, because the library and both test suites never touch a
+device - which is what the `play_record` seam is for.
+
 ## How it works
 
 Rather than inverting the measurement, every single-component fault that
