@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: netfault
+abstract: >-
+  A fault dictionary for linear analog circuits. Given a netlist and a
+  measured frequency response, it simulates every single-component fault
+  that could explain the measurement and ranks them, naming the part and
+  the factor. Includes a numpy modified-nodal-analysis solver, so a linear
+  dictionary is built without an external simulator, and reports when no
+  candidate explains the measurement rather than returning a confident
+  wrong answer.
+type: software
+authors:
+  - family-names: Nussbaumer
+    given-names: Max
+version: 0.1.0
+date-released: "2026-09-14"
+license: MIT
+repository-code: "https://github.com/quotentiroler/netfault"
+keywords:
+  - fault diagnosis
+  - fault dictionary
+  - simulation-before-test
+  - analog circuits
+  - SPICE
+  - netlist
+  - modified nodal analysis
+  - test and measurement
+references:
+  - type: article
+    title: "Fault Diagnosis of Analog Circuits"
+    authors:
+      - family-names: Bandler
+        given-names: "J. W."
+      - family-names: Salama
+        given-names: "A. E."
+    journal: "Proceedings of the IEEE"
+    volume: 73
+    start: 1279
+    end: 1325
+    year: 1985
