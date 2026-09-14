@@ -138,6 +138,30 @@ Two more things stop a healthy board being blamed:
   own source and load impedance belong in the deck, and belong out of the
   candidate set: `--exclude Rsrc,Rin`.
 
+## Relation to prior work
+
+The method here is a **fault dictionary** - the simulation-before-test
+approach to analog fault diagnosis: simulate a catalogue of faults, store
+their signatures, and match a measurement against the catalogue. It is not
+new. The standard survey is Bandler and Salama, "Fault Diagnosis of Analog
+Circuits", Proc. IEEE 73 (1985), 1279-1325, and there is a modern taxonomy
+in [AEU 2016](https://www.sciencedirect.com/science/article/abs/pii/S1434841116308445).
+
+What is here that is not in a paper:
+
+- a runnable MIT-licensed implementation with tests, `pip install -e .`
+- a numpy MNA solver, so a linear dictionary builds with no simulator
+- a shape-aligned residual, because a measured leg arrives at its own level
+- an `unexplained` verdict, so an incomplete model yields no answer rather
+  than a confident wrong one
+- opens and shorts in the dictionary beside parametric drift, since a cold
+  joint and a bridged pad are the common faults and neither is a value
+  being off by a factor
+
+If you are benchmarking a new diagnosis method, this is meant to serve as
+the classical baseline rather than yet another private reimplementation of
+one. If it is wrong or unfair as a baseline, that is worth an issue.
+
 ## Limits
 
 - **One fault at a time.** Two parts wrong at once is a much larger search
