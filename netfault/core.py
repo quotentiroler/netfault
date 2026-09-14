@@ -124,6 +124,28 @@ def localise(src, freqs, measured, simulate, refs=None, factors=(),
 # one noise floor away from the measurement, so a best candidate sitting
 # far outside it means the answer is not in the dictionary at all.
 #
+#
+# An open and a short are not exotic faults, they are the common ones: a
+# cold joint and a bridged pad.  Neither is a value being wrong by a
+# factor, so a grid that only spans 0.1x to 10x cannot represent the two
+# things most likely to be true of a board that does not work.  They cost
+# nothing to add - a resistor going open is a huge one, a capacitor going
+# open is a tiny one, and the solver takes both.
+#
+OPEN = 1e9
+SHORT = 1e-9
+FACTORS = (SHORT, 0.1, 0.22, 0.47, 2.2, 4.7, 10.0, OPEN)
+
+
+def describe(factor):
+    """'OPEN', 'SHORT', or 'x4.7' - what to print for a factor."""
+    if factor >= OPEN / 1e3:
+        return "OPEN"
+    if factor <= SHORT * 1e3:
+        return "SHORT"
+    return "x%g" % factor
+
+
 UNEXPLAINED = 3.0
 
 #

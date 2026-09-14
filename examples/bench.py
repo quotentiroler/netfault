@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import netfault
 from netfault import measure, mna
 
-FACTORS = (0.1, 0.22, 0.33, 0.47, 0.68, 1.5, 2.2, 3.3, 4.7, 10.0)
+FACTORS = netfault.FACTORS
 
 
 def simulated_device(src, node, gain_db=-3.0, noise=0.0, seed=0):
@@ -123,6 +123,20 @@ def main():
     if skip:
         print("not on the board, so not candidates: %s" % ", ".join(sorted(skip)))
     cands = netfault.candidates(src, freqs, sim, refs, FACTORS)
+    #
+    # A board passing nothing is the commonest complaint of all, and the
+    # ranking has nothing useful to say about it: every candidate is being
+    # compared against a noise floor.  Answer it before trying.
+    #
+    if float(np.mean(meas)) < -60.0:
+        print("
+  THE BOARD IS PASSING ALMOST NOTHING (%.1f dB mean)."
+              % float(np.mean(meas)))
+        print("  That is an open somewhere in the signal path, or no board"
+              " in the loop.")
+        print("  Check continuity end to end before measuring anything.")
+        return 0
+
     usable = netfault.resolvable(cands, max(noise, 1e-4))
     dropped = len(cands) - len(usable)
     if dropped:
@@ -134,7 +148,7 @@ def main():
     print("\n  %-10s %-8s %s" % ("part", "factor", "residual dB"))
     for resid, ref, factor in ranked[:args.top]:
         print("  %-10s %-8s %.4f"
-              % (ref or "(nominal)", "-" if ref is None else "x%g" % factor,
+              % (ref or "(nominal)", "-" if ref is None else netfault.describe(factor),
                  resid))
 
     print()
@@ -160,9 +174,14 @@ def main():
     elif v["verdict"] == "nominal":
         print("  the board matches the netlist (%.4f dB)" % v["residual"])
     else:
-        print("  %s at %g x nominal (%.3g -> %.3g)"
-              % (v["ref"], v["factor"], parts[v["ref"]]["value"],
-                 parts[v["ref"]]["value"] * v["factor"]))
+        d = netfault.describe(v["factor"])
+        if d in ("OPEN", "SHORT"):
+            print("  %s is %s  (%s - check the joint, check for a bridge)"
+                  % (v["ref"], d, parts[v["ref"]]["raw"]))
+        else:
+            print("  %s at %s nominal (%.3g -> %.3g)"
+                  % (v["ref"], d, parts[v["ref"]]["value"],
+                     parts[v["ref"]]["value"] * v["factor"]))
         print("  %.4f dB residual, %.4f dB clear of the next answer"
               % (v["residual"], v["margin"]))
     return 0
