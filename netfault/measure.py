@@ -68,3 +68,17 @@ def calibrate(play_record, freqs, **kw):
     already more than the fault ranking can spare.
     """
     return response(play_record, freqs, **kw)
+
+
+def repeatability(play_record, freqs, **kw):
+    """The sweep's own RMS spread, in dB, from measuring twice.
+
+    explain() reads a residual against this, so it is worth measuring
+    rather than assuming: it is the whole of what separates "one part is
+    wrong" from "this deck does not describe this rig".  Nothing is
+    touched between the two sweeps, so what differs is the bench.
+    """
+    a = response(play_record, freqs, **kw)
+    b = response(play_record, freqs, **kw)
+    d = a - b
+    return float(np.sqrt(np.mean((d - d.mean()) ** 2)) / np.sqrt(2.0))

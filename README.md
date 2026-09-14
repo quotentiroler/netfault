@@ -88,6 +88,36 @@ Calibrate first with the output looped straight back, and subtract. That
 step is what decides whether the budget is met: the extraction itself is
 good to about 0.004 dB, so everything left over is the interface.
 
+## When the answer is not a part
+
+`match()` always returns a closest candidate, because something always is
+closest. On a rig the deck does not quite describe, that candidate is a
+real part at a real factor with a comfortable margin, and it is wrong.
+Measured: **2.2 nF of undeclared cable capacitance on a healthy board
+blames a resistor at ten times nominal, 0.06 dB clear of second place.**
+
+So read the residual against the bench's own repeatability, which is a
+thing to measure rather than guess:
+
+```python
+noise = measure.repeatability(play_record, freqs)   # sweep twice, untouched
+v = netfault.explain(cands, meas, noise_db=noise)
+v["verdict"]    # nominal | fault | ambiguous | unexplained
+```
+
+`unexplained` means nothing in the dictionary accounts for the
+measurement, and the deck needs fixing before any part is believed.
+
+Two more things stop a healthy board being blamed:
+
+- `resolvable()` drops faults this bench could not have seen anyway. A
+  part the output barely depends on produces a candidate that is nearly
+  the healthy curve, and offering it as a rival is arithmetic rather than
+  information.
+- Parts that are not on the board cannot be mis-fitted. The interface's
+  own source and load impedance belong in the deck, and belong out of the
+  candidate set: `--exclude Rsrc,Rin`.
+
 ## Limits
 
 - **One fault at a time.** Two parts wrong at once is a much larger search

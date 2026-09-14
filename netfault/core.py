@@ -106,3 +106,88 @@ def localise(src, freqs, measured, simulate, refs=None, factors=(),
     """candidates() then match(), for a caller diagnosing exactly one board."""
     return match(candidates(src, freqs, simulate, refs, factors), measured,
                  align)
+
+
+#
+# Ranking is not the same as answering.
+#
+# match() always returns a closest candidate, and something is always
+# closest.  On a rig the deck does not quite describe - a stray
+# capacitance, a source impedance nobody wrote down - the closest
+# candidate is a real part at a real factor, with a comfortable margin
+# over the runner-up, and it is wrong.  Measured: 2.2 nF of undeclared
+# cable capacitance on a HEALTHY board blames a resistor at ten times
+# nominal, 0.06 dB clear of second place.
+#
+# So the residual has to be read against something.  The measurement's own
+# repeatability is that something: the true candidate can only sit about
+# one noise floor away from the measurement, so a best candidate sitting
+# far outside it means the answer is not in the dictionary at all.
+#
+UNEXPLAINED = 3.0
+
+#
+# ...and a floor under it, because the method has its own error even on a
+# perfect bench.  Extraction costs about 0.004 dB, and the factor grid is
+# coarse, so a fault landing between two of its rungs is short by more
+# than nothing.  0.02 dB is clear of both and still far under the 0.10 dB
+# that undeclared stray capacitance produced.
+#
+FLOOR_DB = 0.02
+
+
+def explain(cands, measured, noise_db=0.02, margin_db=0.02, align=True):
+    """Rank, and then say whether the top answer is worth believing.
+
+    'noise_db' is the measurement's own RMS repeatability, which is a
+    thing to measure rather than guess: sweep twice without touching
+    anything and take the RMS difference.
+
+    verdict is one of
+      nominal      the board matches the deck
+      fault        one part explains it, clear of the runner-up
+      ambiguous    a part fits, but not better than the next answer
+      unexplained  nothing here fits; the deck does not describe the rig
+    """
+    ranked = match(cands, measured, align)
+    best = ranked[0]
+    runner = ranked[1] if len(ranked) > 1 else (float("inf"), None, 1.0)
+    margin = runner[0] - best[0]
+
+    if best[0] > max(UNEXPLAINED * noise_db, FLOOR_DB):
+        verdict = "unexplained"
+    elif margin < margin_db:
+        verdict = "ambiguous"
+    elif best[1] is None:
+        verdict = "nominal"
+    else:
+        verdict = "fault"
+
+    return {"verdict": verdict, "ref": best[1], "factor": best[2],
+            "residual": best[0], "margin": margin, "ranked": ranked}
+
+
+def resolution(cands, align=True):
+    """How far each fault sits from the healthy response, in dB.
+
+    A part the output barely depends on produces a candidate that is
+    nearly the nominal curve, and no bench can tell the two apart.  That
+    is the circuit's property and not the bench's fault: 32 ohms of change
+    in a 100 ohm source feeding a 10k load moves the output by 0.006 dB,
+    and nothing will ever measure it.
+    """
+    nominal = next(db for ref, _f, db in cands if ref is None)
+    return sorted((residual(db, nominal, align), ref, f)
+                  for ref, f, db in cands if ref is not None)
+
+
+def resolvable(cands, noise_db, align=True):
+    """Drop the faults this bench could not see even if they were there.
+
+    Leaving them in does not make the answer safer.  It makes a healthy
+    board look ambiguous against a fault nobody could have detected, which
+    reads as a warning and is only arithmetic.
+    """
+    floor = max(UNEXPLAINED * noise_db, FLOOR_DB)
+    keep = {(ref, f) for d, ref, f in resolution(cands, align) if d > floor}
+    return [c for c in cands if c[0] is None or (c[0], c[1]) in keep]

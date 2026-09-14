@@ -4,7 +4,9 @@
 * output and input impedance.  Leaving them out is the usual reason a
 * real measurement refuses to match a netlist that looks correct.
 * Measure yours, or start from these and check the nominal board comes
-* back as nominal.
+* back as nominal.  They are also not parts you soldered, so pass
+*   --exclude Rsrc,Rin
+* and they stop competing to explain a fault they cannot have.
 *
 V1   gen 0   AC 1
 Rsrc gen in  100

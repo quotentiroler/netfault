@@ -126,8 +126,47 @@ def realism():
            "%.0f%%" % rate[0.05])
 
 
+def refuses_to_guess():
+    """The half the first round of goals left out.
+
+    Every criterion up to here was 'given a fault, find it'.  None of them
+    said 'given no fault and a deck that does not quite describe the rig,
+    do not invent one', and that is the failure that matters: a wrong
+    answer delivered with a good margin is worse than no answer.
+    """
+    print("explain  (when nothing here is the answer)")
+    src = deck("ladder.cir")
+    sim = mna.runner("out")
+    refs = sorted(netfault.components(src))
+    cands = netfault.candidates(src, FREQS, sim, refs, FACTORS)
+    noise = 0.02
+
+    v = netfault.explain(cands, sim(src, FREQS), noise_db=noise)
+    record("a correct board on a correct deck is nominal",
+           v["verdict"] == "nominal", v["verdict"])
+
+    faulty = netfault.perturb(src, "C2", 4.7)
+    v = netfault.explain(cands, sim(faulty, FREQS), noise_db=noise)
+    record("a real fault is still named", 
+           v["verdict"] == "fault" and v["ref"] == "C2",
+           "%s %s" % (v["verdict"], v["ref"]))
+
+    # the rig has something the deck never heard of - stray cable capacitance
+    stray = src.replace(".end", "Ccable out 0 2.2n" + chr(10) + ".end")
+    v = netfault.explain(cands, sim(stray, FREQS), noise_db=noise)
+    record("an undeclared part is not blamed on a declared one",
+           v["verdict"] == "unexplained",
+           "%s -> %s" % (v["verdict"], v["ref"]))
+
+    v = netfault.explain(cands, sim(src, FREQS), noise_db=noise,
+                         margin_db=10.0)
+    record("a thin margin is called ambiguous", v["verdict"] == "ambiguous",
+           v["verdict"])
+
+
 def main():
-    for stage in (solver_is_right, values, parsing, finds_the_fault, realism):
+    for stage in (solver_is_right, values, parsing, finds_the_fault,
+                  realism, refuses_to_guess):
         stage()
         print()
     if FAILED:
