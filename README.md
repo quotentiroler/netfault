@@ -1,5 +1,7 @@
 # netfault
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22744875.svg)](https://doi.org/10.5281/zenodo.22744875)
+
 Measure a linear circuit, and find out **which component is wrong**.
 
 Comparing a build against its schematic and reporting "you disagree above
@@ -161,6 +163,10 @@ What is here that is not in a paper:
 If you are benchmarking a new diagnosis method, this is meant to serve as
 the classical baseline rather than yet another private reimplementation of
 one. If it is wrong or unfair as a baseline, that is worth an issue.
+
+Citable: [10.5281/zenodo.22744875](https://doi.org/10.5281/zenodo.22744875) resolves to the
+latest version, and GitHub's "Cite this repository" has the formatted
+entry.
 
 ## Limits
 

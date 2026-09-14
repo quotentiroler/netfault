@@ -17,6 +17,7 @@ version: 0.1.0
 date-released: "2026-09-14"
 license: MIT
 repository-code: "https://github.com/quotentiroler/netfault"
+doi: "10.5281/zenodo.22744875"
 keywords:
   - fault diagnosis
   - fault dictionary
