@@ -61,6 +61,33 @@ many perturbations of a busy circuit look alike.
 **About 0.05 dB RMS is the budget to aim at**, and that is a real
 requirement on the bench rather than a formality.
 
+## Measuring the board
+
+You need a sweep of levels. `netfault.measure` does stepped sine, which is
+slower than a chirp and has nothing to get subtly wrong: one tone, one
+correlation, everything that is not that tone discarded.
+
+`play_record` is the seam. It takes a stimulus and returns what came back,
+and nothing above it cares whether that is a sound card, a pedal over USB
+audio, or a filter standing in for one in a test.
+
+```python
+import sounddevice as sd
+from netfault import measure
+
+def play_record(x, fs):
+    return sd.playrec(x, samplerate=fs, channels=1, blocking=True)[:, 0]
+
+ref  = measure.calibrate(play_record, freqs)      # output looped to input
+meas = measure.response(play_record, freqs)       # board in the loop
+ranked = netfault.match(cands, meas - ref)
+print(ranked[0])                                  # (0.03, 'C2', 4.7)
+```
+
+Calibrate first with the output looped straight back, and subtract. That
+step is what decides whether the budget is met: the extraction itself is
+good to about 0.004 dB, so everything left over is the interface.
+
 ## Limits
 
 - **One fault at a time.** Two parts wrong at once is a much larger search

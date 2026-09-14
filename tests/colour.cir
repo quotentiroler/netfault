@@ -1,0 +1,6 @@
+* Something standing in for an interface's own response: a gentle
+* high-pass from a coupling capacitor, which is what a real one has.
+V1 in 0 AC 1
+C1 in out 10u
+R1 out 0 10k
+.end
