@@ -129,8 +129,8 @@ def main():
     # compared against a noise floor.  Answer it before trying.
     #
     if float(np.mean(meas)) < -60.0:
-        print("
-  THE BOARD IS PASSING ALMOST NOTHING (%.1f dB mean)."
+        print()
+        print("  THE BOARD IS PASSING ALMOST NOTHING (%.1f dB mean)."
               % float(np.mean(meas)))
         print("  That is an open somewhere in the signal path, or no board"
               " in the loop.")
