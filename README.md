@@ -168,6 +168,16 @@ Citable: [10.5281/zenodo.22744875](https://doi.org/10.5281/zenodo.22744875) reso
 latest version, and GitHub's "Cite this repository" has the formatted
 entry.
 
+## Acknowledgement
+
+The measurement approach here was developed while working with the
+`Validation` suite in [torvalds/GuitarPedal](https://github.com/torvalds/GuitarPedal),
+which solves the same problem for one specific piece of hardware.
+`netfault` shares no code with it - that project is GPL-2.0 and this one
+is MIT - but the stepped-sine approach, the loopback calibration and the
+settling behaviour were all informed by reading `loop.py` and `audio.py`
+there first.
+
 ## Limits
 
 - **One fault at a time.** Two parts wrong at once is a much larger search
