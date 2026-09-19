@@ -60,23 +60,46 @@ def perturb(src, ref, factor):
     return out
 
 
+def signature(src, freqs, simulate, levels=None):
+    """What a board looks like: one dB curve, or one per drive level.
+
+    A linear network is the same network at every level, so one curve
+    says everything about it.  A circuit with a clipper in it is not:
+    the part that sets where it folds does nothing at all until the
+    drive reaches it, so a single sweep cannot tell a wrong one from a
+    right one.  Ask at several levels and it can.
+
+    'simulate' is called as simulate(src, freqs) without levels, and as
+    simulate(src, freqs, level) with them.  Returns a 1-D array in the
+    first case and a (level, freq) array in the second.
+    """
+    if levels is None:
+        return np.asarray(simulate(src, freqs), dtype=float)
+    return np.asarray([simulate(src, freqs, level) for level in levels],
+                      dtype=float)
+
+
 def residual(a, b, align=True):
-    """How far apart two dB curves are in SHAPE, in dB RMS.
+    """How far apart two signatures are in SHAPE, in dB RMS.
 
     'align' removes the best constant offset first, and is on because a
-    measured leg never arrives at the deck's absolute level: the interface
-    has its own gain and the board has its own output level, and neither
-    is what is being diagnosed.  Without it a level error of a few dB
-    swamps every shape difference and the ranking answers a question
-    nobody asked.
+    measured leg never arrives at the deck's absolute level: the
+    interface has its own gain and the board has its own output level,
+    and neither is what is being diagnosed.  Without it a level error of
+    a few dB swamps every shape difference.
+
+    A ladder is aligned ROW BY ROW.  Each rung was measured at its own
+    drive, through whatever gain the bench had at the time, so one offset
+    across the whole ladder would fold those differences into the
+    residual and rank on them.
     """
     d = np.asarray(a, dtype=float) - np.asarray(b, dtype=float)
     if align:
-        d = d - d.mean()
+        d = d - (d.mean(axis=-1, keepdims=True) if d.ndim > 1 else d.mean())
     return float(np.sqrt(np.mean(d * d)))
 
 
-def candidates(src, freqs, simulate, refs=None, factors=()):
+def candidates(src, freqs, simulate, refs=None, factors=(), levels=None):
     """Every single-component fault, simulated once, as [(ref, factor, db)].
 
     Separate from the matching because the library does not depend on the
@@ -87,10 +110,11 @@ def candidates(src, freqs, simulate, refs=None, factors=()):
     """
     if refs is None:
         refs = sorted(components(src))
-    out = [(None, 1.0, simulate(src, freqs))]
+    out = [(None, 1.0, signature(src, freqs, simulate, levels))]
     for ref in refs:
         for f in factors:
-            out.append((ref, f, simulate(perturb(src, ref, f), freqs)))
+            out.append((ref, f, signature(perturb(src, ref, f), freqs,
+                                          simulate, levels)))
     return out
 
 
@@ -102,10 +126,10 @@ def match(cands, measured, align=True):
 
 
 def localise(src, freqs, measured, simulate, refs=None, factors=(),
-             align=True):
+             align=True, levels=None):
     """candidates() then match(), for a caller diagnosing exactly one board."""
-    return match(candidates(src, freqs, simulate, refs, factors), measured,
-                 align)
+    return match(candidates(src, freqs, simulate, refs, factors, levels),
+                 measured, align)
 
 
 #

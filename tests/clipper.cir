@@ -1,0 +1,14 @@
+* A network whose clipping stage only engages above a drive level.
+* Rclip sets where it engages, so a fault in Rclip is invisible at low
+* drive and plain at high drive.  It is a high-value bleeder, so it
+* barely loads the node and its linear effect is under the noise
+* floor.  That is the RAT's situation in
+* miniature, and it is why one sweep at one level cannot diagnose it.
+V1 in 0 AC 1
+R1 in a 10k
+C1 a 0 10n
+R2 a out 22k
+C2 out 0 4.7n
+Rclip out 0 100meg
+RL out 0 100k
+.end
