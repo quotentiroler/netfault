@@ -22,7 +22,7 @@ import numpy as np
 
 from .values import format_value, parse_value
 
-_DEVICE = re.compile(r"^([RCL]\w*)(\s+)(\S+)(\s+)(\S+)(\s+)(\S+)\s*$", re.M)
+_DEVICE = re.compile(r"^([RCL]\w*)(\s+)(\S+)(\s+)(\S+)(\s+)(\S+)\s*$", re.MULTILINE)
 
 
 def components(src):
@@ -56,7 +56,8 @@ def perturb(src, ref, factor):
 
     out = _DEVICE.sub(swap, src)
     if len(seen) != 1:
-        raise ValueError("%s matched %d devices, wanted 1" % (ref, len(seen)))
+        msg = f"{ref} matched {len(seen)} devices, wanted 1"
+        raise ValueError(msg)
     return out
 
 
@@ -79,7 +80,7 @@ def signature(src, freqs, simulate, levels=None):
                       dtype=float)
 
 
-def residual(a, b, align=True):
+def residual(a, b, *, align=True):
     """How far apart two signatures are in SHAPE, in dB RMS.
 
     'align' removes the best constant offset first, and is on because a
@@ -99,7 +100,7 @@ def residual(a, b, align=True):
     return float(np.sqrt(np.mean(d * d)))
 
 
-def candidates(src, freqs, simulate, refs=None, factors=(), levels=None):
+def candidates(src, freqs, simulate, refs=None, factors=(), *, levels=None):
     """Every single-component fault, simulated once, as [(ref, factor, db)].
 
     Separate from the matching because the library does not depend on the
@@ -112,24 +113,23 @@ def candidates(src, freqs, simulate, refs=None, factors=(), levels=None):
         refs = sorted(components(src))
     out = [(None, 1.0, signature(src, freqs, simulate, levels))]
     for ref in refs:
-        for f in factors:
-            out.append((ref, f, signature(perturb(src, ref, f), freqs,
-                                          simulate, levels)))
+        out.extend((ref, f, signature(perturb(src, ref, f), freqs, simulate, levels))
+                   for f in factors)
     return out
 
 
-def match(cands, measured, align=True):
+def match(cands, measured, *, align=True):
     """Rank a library against one measurement: [(residual_db, ref, factor)]."""
-    out = [(residual(db, measured, align), ref, f) for ref, f, db in cands]
+    out = [(residual(db, measured, align=align), ref, f) for ref, f, db in cands]
     out.sort(key=lambda r: r[0])
     return out
 
 
-def localise(src, freqs, measured, simulate, refs=None, factors=(),
+def localise(src, freqs, measured, simulate, refs=None, factors=(), *,
              align=True, levels=None):
     """candidates() then match(), for a caller diagnosing exactly one board."""
-    return match(candidates(src, freqs, simulate, refs, factors, levels),
-                 measured, align)
+    return match(candidates(src, freqs, simulate, refs, factors, levels=levels),
+                 measured, align=align)
 
 
 #
@@ -167,7 +167,7 @@ def describe(factor):
         return "OPEN"
     if factor <= SHORT * 1e3:
         return "SHORT"
-    return "x%g" % factor
+    return f"x{factor:g}"
 
 
 UNEXPLAINED = 3.0
@@ -182,7 +182,7 @@ UNEXPLAINED = 3.0
 FLOOR_DB = 0.02
 
 
-def explain(cands, measured, noise_db=0.02, margin_db=0.02, align=True):
+def explain(cands, measured, *, noise_db=0.02, margin_db=0.02, align=True):
     """Rank, and then say whether the top answer is worth believing.
 
     'noise_db' is the measurement's own RMS repeatability, which is a
@@ -195,7 +195,7 @@ def explain(cands, measured, noise_db=0.02, margin_db=0.02, align=True):
       ambiguous    a part fits, but not better than the next answer
       unexplained  nothing here fits; the deck does not describe the rig
     """
-    ranked = match(cands, measured, align)
+    ranked = match(cands, measured, align=align)
     best = ranked[0]
     runner = ranked[1] if len(ranked) > 1 else (float("inf"), None, 1.0)
     margin = runner[0] - best[0]
@@ -213,7 +213,7 @@ def explain(cands, measured, noise_db=0.02, margin_db=0.02, align=True):
             "residual": best[0], "margin": margin, "ranked": ranked}
 
 
-def resolution(cands, align=True):
+def resolution(cands, *, align=True):
     """How far each fault sits from the healthy response, in dB.
 
     A part the output barely depends on produces a candidate that is
@@ -223,11 +223,11 @@ def resolution(cands, align=True):
     and nothing will ever measure it.
     """
     nominal = next(db for ref, _f, db in cands if ref is None)
-    return sorted((residual(db, nominal, align), ref, f)
+    return sorted((residual(db, nominal, align=align), ref, f)
                   for ref, f, db in cands if ref is not None)
 
 
-def resolvable(cands, noise_db, align=True):
+def resolvable(cands, noise_db, *, align=True):
     """Drop the faults this bench could not see even if they were there.
 
     Leaving them in does not make the answer safer.  It makes a healthy
@@ -235,5 +235,5 @@ def resolvable(cands, noise_db, align=True):
     reads as a warning and is only arithmetic.
     """
     floor = max(UNEXPLAINED * noise_db, FLOOR_DB)
-    keep = {(ref, f) for d, ref, f in resolution(cands, align) if d > floor}
+    keep = {(ref, f) for d, ref, f in resolution(cands, align=align) if d > floor}
     return [c for c in cands if c[0] is None or (c[0], c[1]) in keep]

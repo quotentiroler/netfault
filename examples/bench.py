@@ -16,17 +16,20 @@
 # the rig would have said if a part really were wrong.
 #
 import argparse
-import os
 import sys
+from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import netfault
 from netfault import measure, mna
 
 FACTORS = netfault.FACTORS
+
+# Below this the board is passing nothing and no ranking is meaningful.
+DEAD_BOARD_DB = -60.0
 
 
 def simulated_device(src, node, gain_db=-3.0, noise=0.0, seed=0):
@@ -45,7 +48,8 @@ def simulated_device(src, node, gain_db=-3.0, noise=0.0, seed=0):
 
 
 def sound_device(device=None, channels=1):
-    import sounddevice as sd
+    # Imported here so the library and the tests never need a sound device.
+    import sounddevice as sd  # noqa: PLC0415
     if device is not None:
         sd.default.device = device
 
@@ -57,7 +61,73 @@ def sound_device(device=None, channels=1):
     return play_record
 
 
-def main():
+def bench_devices(args, src):
+    """(loop, dut), either a simulated pair or the sound device."""
+    if not args.simulate:
+        dev = args.device
+        if dev and "," in dev:
+            dev = tuple(int(v) for v in dev.split(","))
+        both = sound_device(dev)
+        input("loop the output straight back to the input, then Enter: ")
+        return both, both
+
+    board = src
+    if args.fault:
+        ref, _, factor = args.fault.partition(":")
+        board = netfault.perturb(src, ref, float(factor))
+        print(f"injected: {ref} x{factor}")
+    #
+    # The fake bench gets a noise floor too.  A noiseless one is not a
+    # preview of anything: every threshold here collapses and it reports
+    # confidence no real interface can earn.
+    #
+    flat = "V1 in 0 AC 1" + chr(10) + "R1 in out 1" + chr(10) + ".end"
+    return (simulated_device(flat, "out", gain_db=0.0, noise=3e-5, seed=11),
+            simulated_device(board, args.node, gain_db=-3.0, noise=3e-5, seed=12))
+
+
+def report(v, parts, noise, ranked):
+    """What the verdict means, for somebody holding an iron."""
+    if v["verdict"] == "unexplained":
+        print(f"  NOTHING HERE EXPLAINS THIS ({v['residual']:.4f} dB residual"
+              f" against a {noise:.4f} dB bench).")
+        print("  The deck does not describe the rig.  Usual causes: the"
+              " interface's own")
+        print("  source and load impedance missing from the netlist, or"
+              " stray cable")
+        print("  capacitance.  Fix the deck before reading anything above.")
+        return
+
+    if v["verdict"] == "ambiguous":
+        nxt = ranked[1]
+        if v["ref"] is None:
+            print(f"  CLOSE TO NOMINAL, but {nxt[1]} at {nxt[2]:g}x fits within"
+                  f" {v['margin']:.4f} dB of it.")
+            print("  This bench cannot tell those two apart.")
+        else:
+            print(f"  AMBIGUOUS: {v['ref']} at {v['factor']:g}x fits, but only"
+                  f" {v['margin']:.4f} dB better than"
+                  f" {nxt[1] or 'nominal'} at {nxt[2]:g}x.")
+        print("  Average longer (--seconds) or add points (--points).")
+        return
+
+    if v["verdict"] == "nominal":
+        print(f"  the board matches the netlist ({v['residual']:.4f} dB)")
+        return
+
+    d = netfault.describe(v["factor"])
+    if d in ("OPEN", "SHORT"):
+        print(f"  {v['ref']} is {d}  ({parts[v['ref']]['raw']} - check the"
+              " joint, check for a bridge)")
+    else:
+        print(f"  {v['ref']} at {v['factor']:g}x nominal"
+              f" ({parts[v['ref']]['value']:.3g} ->"
+              f" {parts[v['ref']]['value'] * v['factor']:.3g})")
+    print(f"  {v['residual']:.4f} dB residual, {v['margin']:.4f} dB clear of"
+          " the next answer")
+
+
+def parse_args():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("netlist", help="the deck the board claims to be")
     ap.add_argument("--node", default="out", help="output node name")
@@ -79,43 +149,26 @@ def main():
                     help="parts that are not on the board and so cannot be "
                          "mis-fitted: the interface's own Rsrc, Rin, ...")
     ap.add_argument("--top", type=int, default=5)
-    args = ap.parse_args()
+    return ap.parse_args()
 
-    src = open(args.netlist).read()
+
+def main():
+    args = parse_args()
+    src = Path(args.netlist).read_text()
     freqs = list(np.geomspace(args.lo, args.hi, args.points))
     amp = 10.0 ** (args.level / 20.0)
-    kw = dict(fs=args.fs, seconds=args.seconds, amplitude=amp)
+    kw = {"fs": args.fs, "seconds": args.seconds, "amplitude": amp}
 
     parts = netfault.components(src)
     if not parts:
-        sys.exit("no R/C/L with plain values in %s" % args.netlist)
-    print("%s: %d parts, %d points from %g to %g Hz"
-          % (os.path.basename(args.netlist), len(parts), len(freqs),
-             args.lo, args.hi))
+        sys.exit(f"no R/C/L with plain values in {args.netlist}")
+    print(f"{Path(args.netlist).name}: {len(parts)} parts, "
+          f"{len(freqs)} points from {args.lo:g} to {args.hi:g} Hz")
 
-    if args.simulate:
-        board = src
-        if args.fault:
-            ref, _, factor = args.fault.partition(":")
-            board = netfault.perturb(src, ref, float(factor))
-            print("injected: %s x%s" % (ref, factor))
-        # The fake bench gets a noise floor too.  A noiseless one is
-        # not a preview of anything: every threshold here collapses
-        # and it reports confidence no real interface can earn.
-        flat = "V1 in 0 AC 1" + chr(10) + "R1 in out 1" + chr(10) + ".end"
-        loop = simulated_device(flat, "out", gain_db=0.0, noise=3e-5,
-                                seed=11)
-        dut = simulated_device(board, args.node, gain_db=-3.0,
-                               noise=3e-5, seed=12)
-    else:
-        dev = args.device
-        if dev and "," in dev:
-            dev = tuple(int(v) for v in dev.split(","))
-        loop = dut = sound_device(dev)
-        input("loop the output straight back to the input, then Enter: ")
+    loop, dut = bench_devices(args, src)
 
     noise = measure.repeatability(loop, freqs, **kw)
-    print("bench repeatability: %.4f dB RMS" % noise)
+    print(f"bench repeatability: {noise:.4f} dB RMS")
     ref_db = measure.calibrate(loop, freqs, **kw)
     if not args.simulate:
         input("now put the board in the loop, then Enter: ")
@@ -125,17 +178,16 @@ def main():
     skip = {r.strip() for r in args.exclude.split(",") if r.strip()}
     refs = [r for r in sorted(parts) if r not in skip]
     if skip:
-        print("not on the board, so not candidates: %s" % ", ".join(sorted(skip)))
+        print("not on the board, so not candidates: {}".format(", ".join(sorted(skip))))
     cands = netfault.candidates(src, freqs, sim, refs, FACTORS)
     #
     # A board passing nothing is the commonest complaint of all, and the
     # ranking has nothing useful to say about it: every candidate is being
     # compared against a noise floor.  Answer it before trying.
     #
-    if float(np.mean(meas)) < -60.0:
+    if float(np.mean(meas)) < DEAD_BOARD_DB:
         print()
-        print("  THE BOARD IS PASSING ALMOST NOTHING (%.1f dB mean)."
-              % float(np.mean(meas)))
+        print(f"  THE BOARD IS PASSING ALMOST NOTHING ({float(np.mean(meas)):.1f} dB mean).")
         print("  That is an open somewhere in the signal path, or no board"
               " in the loop.")
         print("  Check continuity end to end before measuring anything.")
@@ -144,50 +196,18 @@ def main():
     usable = netfault.resolvable(cands, max(noise, 1e-4))
     dropped = len(cands) - len(usable)
     if dropped:
-        print("  %d of %d candidates are below this bench's resolution and"
-              " were not considered" % (dropped, len(cands) - 1))
+        print(f"  {dropped} of {len(cands) - 1} candidates are below this bench's"
+              " resolution and were not considered")
     v = netfault.explain(usable, meas, noise_db=max(noise, 1e-4))
     ranked = v["ranked"]
 
-    print("\n  %-10s %-8s %s" % ("part", "factor", "residual dB"))
+    print(f"\n  {'part':<10} {'factor':<8} residual dB")
     for resid, ref, factor in ranked[:args.top]:
-        print("  %-10s %-8s %.4f"
-              % (ref or "(nominal)", "-" if ref is None else netfault.describe(factor),
-                 resid))
+        shown = "-" if ref is None else netfault.describe(factor)
+        print(f"  {ref or '(nominal)':<10} {shown:<8} {resid:.4f}")
 
     print()
-    if v["verdict"] == "unexplained":
-        print("  NOTHING HERE EXPLAINS THIS (%.4f dB residual against a"
-              " %.4f dB bench)." % (v["residual"], noise))
-        print("  The deck does not describe the rig.  Usual causes: the"
-              " interface's own")
-        print("  source and load impedance missing from the netlist, or"
-              " stray cable")
-        print("  capacitance.  Fix the deck before reading anything above.")
-    elif v["verdict"] == "ambiguous":
-        nxt = ranked[1]
-        if v["ref"] is None:
-            print("  CLOSE TO NOMINAL, but %s at %gx fits within %.4f dB of it."
-                  % (nxt[1], nxt[2], v["margin"]))
-            print("  This bench cannot tell those two apart.")
-        else:
-            print("  AMBIGUOUS: %s at %gx fits, but only %.4f dB better than"
-                  " %s at %gx." % (v["ref"], v["factor"], v["margin"],
-                                   nxt[1] or "nominal", nxt[2]))
-        print("  Average longer (--seconds) or add points (--points).")
-    elif v["verdict"] == "nominal":
-        print("  the board matches the netlist (%.4f dB)" % v["residual"])
-    else:
-        d = netfault.describe(v["factor"])
-        if d in ("OPEN", "SHORT"):
-            print("  %s is %s  (%s - check the joint, check for a bridge)"
-                  % (v["ref"], d, parts[v["ref"]]["raw"]))
-        else:
-            print("  %s at %gx nominal (%.3g -> %.3g)"
-                  % (v["ref"], v["factor"], parts[v["ref"]]["value"],
-                     parts[v["ref"]]["value"] * v["factor"]))
-        print("  %.4f dB residual, %.4f dB clear of the next answer"
-              % (v["residual"], v["margin"]))
+    report(v, parts, noise, ranked)
     return 0
 
 

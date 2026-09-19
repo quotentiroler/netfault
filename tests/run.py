@@ -7,29 +7,28 @@
 # to the localiser as though it came off a board, and it has to name the
 # part it was never told about.
 #
-import os
 import sys
+from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import netfault
 from netfault import mna
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = Path(__file__).resolve().parent
 FREQS = list(np.geomspace(20.0, 20000.0, 25))
 FACTORS = (0.1, 0.22, 0.47, 2.2, 4.7, 10.0)
 FAILED = []
 
 
 def deck(name):
-    return open(os.path.join(HERE, name)).read()
+    return (HERE / name).read_text()
 
 
 def record(name, ok, detail=""):
-    print("  %-48s %s%s" % (name, "ok" if ok else "FAIL",
-                            "  " + detail if detail else ""))
+    print(f"  {name:<48} {'ok' if ok else 'FAIL'}{'  ' + detail if detail else ''}")
     if not ok:
         FAILED.append(name)
 
@@ -40,11 +39,11 @@ def solver_is_right():
     src = deck("rc.cir")
     fc = 1000.0
     db = mna.solve(src, "out", [fc / 100, fc, fc * 10])
-    record("passband is 0 dB", abs(db[0]) < 0.01, "%.4f dB" % db[0])
+    record("passband is 0 dB", abs(db[0]) < 0.01, f"{db[0]:.4f} dB")
     record("-3.0103 dB at the corner", abs(db[1] + 3.0103) < 0.01,
-           "%.4f dB" % db[1])
+           f"{db[1]:.4f} dB")
     record("-20 dB/decade above it", abs(db[2] + 20.04) < 0.1,
-           "%.4f dB" % db[2])
+           f"{db[2]:.4f} dB")
 
 
 def values():
@@ -53,8 +52,8 @@ def values():
                        ("10u", 1e-5), ("1meg", 1e6), ("100p", 1e-10),
                        ("47", 47.0), ("2.2u", 2.2e-6)):
         got = netfault.parse_value(text)
-        record("%-8s -> %g" % (text, want), abs(got - want) <= abs(want) * 1e-9,
-               "got %g" % got)
+        record(f"{text:<8} -> {want:g}", abs(got - want) <= abs(want) * 1e-9,
+               f"got {got:g}")
 
 
 def parsing():
@@ -67,7 +66,7 @@ def parsing():
     out = netfault.perturb(src, "R2", 10.0)
     diff = [i for i, (x, y) in enumerate(zip(src.splitlines(),
                                              out.splitlines())) if x != y]
-    record("changes exactly one line", len(diff) == 1, "changed %d" % len(diff))
+    record("changes exactly one line", len(diff) == 1, f"changed {len(diff)}")
     record("R2 is now 220k",
            abs(netfault.components(out)["R2"]["value"] - 220e3) < 1e-6)
 
@@ -79,7 +78,7 @@ def finds_the_fault():
     refs = sorted(netfault.components(src))
     cands = netfault.candidates(src, FREQS, sim, refs, FACTORS)
     record("library covers every part at every factor",
-           len(cands) == len(refs) * len(FACTORS) + 1, "%d" % len(cands))
+           len(cands) == len(refs) * len(FACTORS) + 1, f"{len(cands)}")
 
     hits = 0
     trials = [(r, f) for r in refs for f in (0.22, 4.7)]
@@ -88,11 +87,11 @@ def finds_the_fault():
         top = netfault.match(cands, measured)[0]
         hits += top[1] == ref and abs(top[2] - factor) < 1e-9
     record("names the part and the factor, every time",
-           hits == len(trials), "%d/%d" % (hits, len(trials)))
+           hits == len(trials), f"{hits}/{len(trials)}")
 
     nominal = netfault.match(cands, sim(src, FREQS))[0]
     record("a correct board is called correct", nominal[1] is None,
-           "named %s" % (nominal[1],))
+           f"named {nominal[1]}")
 
 
 def realism():
@@ -107,10 +106,10 @@ def realism():
     for offset in (6.0, -13.7):
         ok = all(netfault.match(cands, truth[r] + offset)[0][1] == r
                  for r in refs)
-        record("survives a %+.1f dB gain offset" % offset, ok)
+        record(f"survives a {offset:+.1f} dB gain offset", ok)
 
     rng = np.random.default_rng(20260914)
-    print("    top-1 over %d parts, 20 draws each:" % len(refs))
+    print(f"    top-1 over {len(refs)} parts, 20 draws each:")
     rate = {}
     for sigma in (0.02, 0.05, 0.10, 0.20):
         hits = 0
@@ -119,11 +118,11 @@ def realism():
                 m = truth[r] + rng.normal(0.0, sigma, len(FREQS)) + 6.0
                 hits += netfault.match(cands, m)[0][1] == r
         rate[sigma] = 100.0 * hits / (20 * len(refs))
-        print("      %.2f dB RMS -> %3.0f%%" % (sigma, rate[sigma]))
+        print(f"      {sigma:.2f} dB RMS -> {rate[sigma]:3.0f}%")
     record("clean measurement is unambiguous", rate[0.02] == 100.0,
-           "%.0f%%" % rate[0.02])
+           f"{rate[0.02]:.0f}%")
     record("0.05 dB RMS is a workable bench budget", rate[0.05] >= 90.0,
-           "%.0f%%" % rate[0.05])
+           f"{rate[0.05]:.0f}%")
 
 
 def refuses_to_guess():
@@ -147,16 +146,16 @@ def refuses_to_guess():
 
     faulty = netfault.perturb(src, "C2", 4.7)
     v = netfault.explain(cands, sim(faulty, FREQS), noise_db=noise)
-    record("a real fault is still named", 
+    record("a real fault is still named",
            v["verdict"] == "fault" and v["ref"] == "C2",
-           "%s %s" % (v["verdict"], v["ref"]))
+           "{} {}".format(v["verdict"], v["ref"]))
 
     # the rig has something the deck never heard of - stray cable capacitance
     stray = src.replace(".end", "Ccable out 0 2.2n" + chr(10) + ".end")
     v = netfault.explain(cands, sim(stray, FREQS), noise_db=noise)
     record("an undeclared part is not blamed on a declared one",
            v["verdict"] == "unexplained",
-           "%s -> %s" % (v["verdict"], v["ref"]))
+           "{} -> {}".format(v["verdict"], v["ref"]))
 
     v = netfault.explain(cands, sim(src, FREQS), noise_db=noise,
                          margin_db=10.0)
@@ -170,9 +169,9 @@ def main():
         stage()
         print()
     if FAILED:
-        print("netfault: %d FAILED" % len(FAILED))
+        print(f"netfault: {len(FAILED)} FAILED")
         for f in FAILED:
-            print("    %s" % f)
+            print(f"    {f}")
         return 1
     print("netfault: ok")
     return 0

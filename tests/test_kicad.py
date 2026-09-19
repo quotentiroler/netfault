@@ -18,23 +18,23 @@ from netfault's own perturbation, and they have to agree.
 Skipped when kicad-cli is not installed.
 """
 
-import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import netfault
 from netfault import mna
 from netfault.values import parse_value
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SCHEMATIC = os.path.join(HERE, "rc2.kicad_sch")
+HERE = Path(__file__).resolve().parent
+SCHEMATIC = HERE / "rc2.kicad_sch"
 FREQS = list(np.geomspace(100.0, 6400.0, 7))
 FACTORS = (0.1, 0.47, 2.2, 10.0)
 NODE = "/out"
@@ -45,7 +45,7 @@ WINDOWS_VERSIONS = ("9.0", "8.0", "7.0")
 
 
 def record(name, ok, detail=""):
-    print("  %-52s %s%s" % (name, "ok" if ok else "FAIL", "  " + detail if detail else ""))
+    print(f"  {name:<52} {'ok' if ok else 'FAIL'}{'  ' + detail if detail else ''}")
     if not ok:
         FAILED.append(name)
 
@@ -57,12 +57,12 @@ def kicad_cli():
         return found
     for base in (r"C:\Program Files\KiCad", r"C:\Program Files (x86)\KiCad"):
         for version in WINDOWS_VERSIONS:
-            path = os.path.join(base, version, "bin", "kicad-cli.exe")
-            if os.path.isfile(path):
-                return path
+            path = Path(base) / version / "bin" / "kicad-cli.exe"
+            if path.is_file():
+                return str(path)
     for path in ("/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli",
                  "/usr/bin/kicad-cli", "/usr/local/bin/kicad-cli"):
-        if os.path.isfile(path):
+        if Path(path).is_file():
             return path
     return None
 
@@ -74,28 +74,28 @@ def run(cli, *args):
 
 def export(cli):
     """kicad-cli sch export netlist --format spice, as kicad-mcp runs it."""
-    out = os.path.join(tempfile.mkdtemp(), "rc2.cir")
-    done = run(cli, "sch", "export", "netlist", "--format", "spice", "-o", out, SCHEMATIC)
-    if done.returncode != 0 or not os.path.isfile(out):
-        raise RuntimeError("kicad-cli could not export the fixture: %s"
-                           % (done.stderr or done.stdout).strip())
-    with open(out, encoding="utf-8") as f:
-        return f.read()
+    out = Path(tempfile.mkdtemp()) / "rc2.cir"
+    done = run(cli, "sch", "export", "netlist", "--format", "spice", "-o", str(out),
+               str(SCHEMATIC))
+    if done.returncode != 0 or not out.is_file():
+        msg = f"kicad-cli could not export the fixture: {(done.stderr or done.stdout).strip()}"
+        raise RuntimeError(msg)
+    return out.read_text(encoding="utf-8")
 
 
 def erc(cli):
     """KiCad's own opinion of the fixture."""
-    out = os.path.join(tempfile.mkdtemp(), "erc.rpt")
-    done = run(cli, "sch", "erc", "--exit-code-violations", "-o", out, SCHEMATIC)
+    out = Path(tempfile.mkdtemp()) / "erc.rpt"
+    done = run(cli, "sch", "erc", "--exit-code-violations", "-o", str(out), str(SCHEMATIC))
     return done.returncode == 0
 
 
 def value_of(src, ref):
-    return parse_value(re.search(r"(?m)^%s\s+\S+\s+\S+\s+(\S+)" % ref, src).group(1))
+    return parse_value(re.search(rf"(?m)^{ref}\s+\S+\s+\S+\s+(\S+)", src).group(1))
 
 
 def plant(src, ref, factor):
-    return re.sub(r"(?m)^(%s\s+\S+\s+\S+\s+)\S+" % ref,
+    return re.sub(rf"(?m)^({ref}\s+\S+\s+\S+\s+)\S+",
                   lambda m: m.group(1) + repr(value_of(src, ref) * factor), src)
 
 
@@ -105,7 +105,7 @@ def main():
         print("test-kicad: SKIPPED - no kicad-cli on this machine")
         return 0
 
-    print("test-kicad: %s" % cli)
+    print(f"test-kicad: {cli}")
     record("KiCad's own ERC passes the fixture", erc(cli))
     src = export(cli)
 
@@ -134,13 +134,13 @@ def main():
             v = netfault.explain(cands, measure(plant(src, ref, factor)),
                                  noise_db=netfault.FLOOR_DB)
             if v["ref"] != ref or abs(v["factor"] - factor) > 1e-9:
-                missed.append("%s %s -> %s %s" % (
+                missed.append("{} {} -> {} {}".format(
                     ref, netfault.describe(factor), v["ref"],
                     "-" if v["ref"] is None else netfault.describe(v["factor"])))
     record("every planted fault names its own part and factor", not missed,
-           "%d of %d" % (len(refs) * len(FACTORS) - len(missed), len(refs) * len(FACTORS)))
+           f"{len(refs) * len(FACTORS) - len(missed)} of {len(refs) * len(FACTORS)}")
     for m in missed:
-        print("      %s" % m)
+        print(f"      {m}")
 
     v = netfault.explain(cands, measure(src), noise_db=netfault.FLOOR_DB)
     record("a healthy board is called nominal", v["verdict"] == "nominal", v["verdict"])
@@ -148,13 +148,13 @@ def main():
     stray = src.replace(".end", "Cstray /a 0 2.2n\n.end")
     v = netfault.explain(cands, measure(stray), noise_db=netfault.FLOOR_DB)
     record("a fault outside the dictionary is refused", v["verdict"] == "unexplained",
-           "%s at %.4f dB" % (v["verdict"], v["residual"]))
+           "{} at {:.4f} dB".format(v["verdict"], v["residual"]))
 
     print()
     if FAILED:
-        print("test-kicad: %d FAILED" % len(FAILED))
+        print(f"test-kicad: {len(FAILED)} FAILED")
         for f in FAILED:
-            print("    %s" % f)
+            print(f"    {f}")
         return 1
     print("test-kicad: ok - schematic to named part, no hardware")
     return 0

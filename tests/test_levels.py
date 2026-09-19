@@ -1,16 +1,16 @@
 """A signature is a ladder when the circuit is level dependent."""
 
-import os
 import sys
+from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import netfault
 from netfault import mna
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = Path(__file__).resolve().parent
 FREQS = list(np.geomspace(40.0, 15000.0, 21))
 FACTORS = (0.22, 0.47, 2.2, 4.7)
 LEVELS = (-40.0, -20.0, -6.0)
@@ -18,11 +18,11 @@ FAILED = []
 
 
 def deck(name):
-    return open(os.path.join(HERE, name)).read()
+    return (HERE / name).read_text()
 
 
 def record(name, ok, detail=""):
-    print("  %-52s %s%s" % (name, "ok" if ok else "FAIL", "  " + detail if detail else ""))
+    print(f"  {name:<52} {'ok' if ok else 'FAIL'}{'  ' + detail if detail else ''}")
     if not ok:
         FAILED.append(name)
 
@@ -45,17 +45,18 @@ def clipper(src, freqs, level=None):
 def one_level_is_not_enough():
     print("a single low-drive sweep cannot see the clipper")
     src = deck("clipper.cir")
-    sim = lambda s, f: clipper(s, f, level=-40.0)
+    def sim(s, f):
+        return clipper(s, f, level=-40.0)
     cands = netfault.candidates(src, FREQS, sim, ["Rclip"], FACTORS)
     measured = sim(netfault.perturb(src, "Rclip", 4.7), FREQS)
     spread = max(r[0] for r in netfault.match(cands, measured))
     record("every Rclip candidate sits under the bench floor",
            spread < netfault.FLOOR_DB,
-           "worst residual %.4f dB, floor %.2f" % (spread, netfault.FLOOR_DB))
+           f"worst residual {spread:.4f} dB, floor {netfault.FLOOR_DB:.2f}")
 
     v = netfault.explain(cands, measured, noise_db=0.02)
     record("so one sweep refuses to name it", v["verdict"] != "fault",
-           "verdict %s, named %s" % (v["verdict"], v["ref"]))
+           "verdict {}, named {}".format(v["verdict"], v["ref"]))
 
 
 def the_ladder_finds_it():
@@ -75,7 +76,7 @@ def the_ladder_finds_it():
         top = netfault.match(cands, measured)[0]
         hits += top[1] == ref
     record("names the part, clipper included", hits == len(trials),
-           "%d/%d" % (hits, len(trials)))
+           f"{hits}/{len(trials)}")
 
 
 def each_level_keeps_its_own_gain():
@@ -89,7 +90,7 @@ def each_level_keeps_its_own_gain():
     skewed = np.asarray(truth) + np.array([[3.0], [-7.5], [11.0]])
     top = netfault.match(cands, skewed)[0]
     record("survives a different offset on every rung", top[1] == "R2",
-           "named %s" % top[1])
+           f"named {top[1]}")
 
 
 def main():
@@ -98,9 +99,9 @@ def main():
         stage()
         print()
     if FAILED:
-        print("levels: %d FAILED" % len(FAILED))
+        print(f"levels: {len(FAILED)} FAILED")
         for f in FAILED:
-            print("    %s" % f)
+            print(f"    {f}")
         return 1
     print("levels: ok")
     return 0

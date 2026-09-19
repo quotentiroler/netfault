@@ -9,17 +9,17 @@
 # stimulus, capture, level extraction, loopback calibration, fault
 # localisation - runs with nothing plugged in.
 #
-import os
 import sys
+from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import netfault
 from netfault import measure, mna
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = Path(__file__).resolve().parent
 FS = 48000
 FREQS = list(np.geomspace(40.0, 15000.0, 25))
 FACTORS = (0.1, 0.22, 0.47, 2.2, 4.7, 10.0)
@@ -27,12 +27,11 @@ FAILED = []
 
 
 def deck(name):
-    return open(os.path.join(HERE, name)).read()
+    return (HERE / name).read_text()
 
 
 def record(name, ok, detail=""):
-    print("  %-50s %s%s" % (name, "ok" if ok else "FAIL",
-                            "  " + detail if detail else ""))
+    print(f"  {name:<50} {'ok' if ok else 'FAIL'}{'  ' + detail if detail else ''}")
     if not ok:
         FAILED.append(name)
 
@@ -58,15 +57,15 @@ def extraction():
     for dbfs in (-6.0, -20.0, -60.0):
         x = measure.tone(1000.0, 0.2, FS, 10.0 ** (dbfs / 20.0))
         got = measure.level_at(x, 1000.0, FS)
-        record("recovers %.1f dBFS" % dbfs, abs(got - dbfs) < 0.01,
-               "%.4f" % got)
+        record(f"recovers {dbfs:.1f} dBFS", abs(got - dbfs) < 0.01,
+               f"{got:.4f}")
 
     x = measure.tone(1000.0, 0.5, FS, 0.5)
     rng = np.random.default_rng(3)
     noisy = x + rng.normal(0.0, 0.01, len(x))
     got = measure.level_at(noisy, 1000.0, FS)
     record("ignores broadband noise 34 dB down",
-           abs(got - (-6.0206)) < 0.02, "%.4f" % got)
+           abs(got - (-6.0206)) < 0.02, f"{got:.4f}")
 
 
 def matches_theory():
@@ -76,7 +75,7 @@ def matches_theory():
     want = mna.solve(src, "out", FREQS)
     err = float(np.max(np.abs((got - got.mean()) - (want - want.mean()))))
     record("within 0.01 dB of theory across the band", err < 0.01,
-           "worst %.5f dB" % err)
+           f"worst {err:.5f} dB")
 
 
 def calibration():
@@ -89,7 +88,7 @@ def calibration():
     got = raw - ref
     err = float(np.max(np.abs((got - got.mean()) - (want - want.mean()))))
     record("removes the interface's own response", err < 0.01,
-           "worst %.5f dB" % err)
+           f"worst {err:.5f} dB")
 
 
 def end_to_end():
@@ -108,7 +107,7 @@ def end_to_end():
                                     FREQS, fs=FS)
         hits += netfault.match(cands, measured)[0][1] == ref
     record("names the part from a measured sweep", hits == len(trials),
-           "%d/%d" % (hits, len(trials)))
+           f"{hits}/{len(trials)}")
 
 
 def main():
@@ -116,9 +115,9 @@ def main():
         stage()
         print()
     if FAILED:
-        print("measure: %d FAILED" % len(FAILED))
+        print(f"measure: {len(FAILED)} FAILED")
         for f in FAILED:
-            print("    %s" % f)
+            print(f"    {f}")
         return 1
     print("measure: ok")
     return 0

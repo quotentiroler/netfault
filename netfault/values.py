@@ -7,7 +7,7 @@ SI = {"f": 1e-15, "p": 1e-12, "n": 1e-9, "u": 1e-6,
       "m": 1e-3, "k": 1e3, "meg": 1e6, "g": 1e9, "t": 1e12}
 
 _NUM = r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?"
-_VALUE = re.compile(r"^(%s)\s*([a-zA-Z]*)$" % _NUM)
+_VALUE = re.compile(rf"^({_NUM})\s*([a-zA-Z]*)$")
 
 
 def parse_value(text):
@@ -20,7 +20,8 @@ def parse_value(text):
     """
     m = _VALUE.match(text.strip())
     if not m:
-        raise ValueError("not a plain value: %r" % text)
+        msg = f"not a plain value: {text!r}"
+        raise ValueError(msg)
     num, suffix = float(m.group(1)), m.group(2).lower()
     if not suffix:
         return num
@@ -31,4 +32,4 @@ def parse_value(text):
 
 def format_value(v):
     """A float back into something a deck will read the same way."""
-    return "%.6g" % v
+    return f"{v:.6g}"

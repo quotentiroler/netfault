@@ -22,7 +22,7 @@ def tone(f, seconds, fs, amplitude=0.5):
     neighbours, which is what lets level_at() be a single bin rather than
     a windowed estimate.
     """
-    n = max(int(round(seconds * fs / (fs / f))) , 1) * int(round(fs / f))
+    n = max(round(seconds * fs / (fs / f)) , 1) * round(fs / f)
     t = np.arange(n) / float(fs)
     return amplitude * np.sin(2.0 * np.pi * f * t)
 

@@ -17,7 +17,7 @@ import numpy as np
 
 from .values import parse_value
 
-_DEV = re.compile(r"^([RCLV])(\w+)\s+(\S+)\s+(\S+)\s+(.+?)\s*$", re.M | re.I)
+_DEV = re.compile(r"^([RCLV])(\w+)\s+(\S+)\s+(\S+)\s+(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
 
 
 def devices(src):
@@ -27,7 +27,7 @@ def devices(src):
         kind, ref = m.group(1).upper(), m.group(1) + m.group(2)
         tail = m.group(5).strip()
         if kind == "V":
-            tail = re.sub(r"^(AC|DC)\s+", "", tail, flags=re.I)
+            tail = re.sub(r"^(AC|DC)\s+", "", tail, flags=re.IGNORECASE)
         try:
             value = parse_value(tail.split()[0])
         except (ValueError, IndexError):

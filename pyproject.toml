@@ -36,3 +36,46 @@ Issues = "https://github.com/quotentiroler/netfault/issues"
 
 [tool.setuptools]
 packages = ["netfault"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  # Prose rules. The reasoning in this codebase lives in block comments
+  # above the code it explains, which is where it is readable, so the
+  # docstring rules would only move it somewhere worse.
+  "D", "ANN", "COM812", "CPY",
+  # The survey this implements uses the notation of the literature, and
+  # renaming A, b, H or Y to satisfy a linter makes it harder to check
+  # against the paper.
+  "N803", "N806",
+  # Asserts are how the tests state their claims.
+  "S101",
+  # The message names the part and the count, which is the whole
+  # diagnostic value; moving it into an exception class would hide it.
+  "TRY003",
+]
+
+[tool.ruff.lint.pylint]
+# Building a fault dictionary needs the deck, the frequencies, how to
+# simulate, which parts, which factors and which levels. All six are
+# independent inputs, and bundling them into a config object to satisfy a
+# count would hide the signature rather than simplify it.
+max-args = 8
+max-positional-args = 6
+
+[tool.ruff.lint.mccabe]
+# solve() stamps one branch per device kind, which is a flat switch rather
+# than nesting, and splitting it would separate the stamp from the matrix
+# it writes into.
+max-complexity = 12
+
+[tool.ruff.lint.per-file-ignores]
+# Printing a report is the whole job of a test script and an example.
+"tests/*" = ["T201", "PLR2004", "INP001"]
+"examples/*" = ["T201", "INP001"]
+# The test drives kicad-cli on purpose, from a path it located itself.
+"tests/test_kicad.py" = ["T201", "PLR2004", "INP001", "S603"]
