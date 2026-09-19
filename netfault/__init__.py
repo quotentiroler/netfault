@@ -5,6 +5,7 @@ from .core import (
     OPEN,
     SHORT,
     UNEXPLAINED,
+    UnsolvableCandidate,
     candidates,
     components,
     describe,
@@ -21,6 +22,7 @@ from .values import format_value, parse_value
 
 __all__ = [
     "FACTORS", "FLOOR_DB", "OPEN", "SHORT", "UNEXPLAINED",
+    "UnsolvableCandidate",
     "candidates", "components", "describe", "explain", "format_value",
     "localise", "match", "measure", "mna", "parse_value", "perturb",
     "residual", "resolution", "resolvable", "signature",

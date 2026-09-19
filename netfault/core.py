@@ -17,12 +17,17 @@
 # faults usually announces itself anyway.
 #
 import re
+import warnings
 
 import numpy as np
 
 from .values import format_value, parse_value
 
 _DEVICE = re.compile(r"^([RCL]\w*)(\s+)(\S+)(\s+)(\S+)(\s+)(\S+)\s*$", re.MULTILINE)
+
+
+class UnsolvableCandidate(UserWarning):
+    """A perturbation the simulator would not converge on."""
 
 
 def components(src):
@@ -108,13 +113,38 @@ def candidates(src, freqs, simulate, refs=None, factors=(), *, levels=None):
     diagnoses as many builds as walk past.  The nominal circuit is in here
     as (None, 1.0) so a board that is simply correct can say so rather
     than being made to pick a scapegoat.
+
+    A candidate 'simulate' refuses is dropped with an UnsolvableCandidate
+    warning naming it, and the rest of the dictionary is still built.  The
+    nominal one is not optional and its failure is raised.
     """
     if refs is None:
         refs = sorted(components(src))
+
+    #
+    # The nominal deck has to solve.  If it does not, the simulate() being
+    # handed in is broken rather than the perturbation, and skipping the
+    # lot would hand back a dictionary of one entry that agrees with
+    # everything.
+    #
     out = [(None, 1.0, signature(src, freqs, simulate, levels))]
+
+    #
+    # A single candidate is allowed to fail.  Scaling a part to SHORT or
+    # OPEN can leave a circuit a real simulator will not converge on, and
+    # a candidate nothing can simulate is one nothing can match either.
+    # Dropping it costs one answer; propagating costs the whole build,
+    # which for a nonlinear circuit is hours.
+    #
     for ref in refs:
-        out.extend((ref, f, signature(perturb(src, ref, f), freqs, simulate, levels))
-                   for f in factors)
+        for factor in factors:
+            try:
+                db = signature(perturb(src, ref, factor), freqs, simulate, levels)
+            except Exception as e:  # noqa: BLE001 - simulate() is the caller's, and raises anything
+                warnings.warn(f"{ref} {describe(factor)} will not simulate: {e}",
+                              UnsolvableCandidate, stacklevel=2)
+                continue
+            out.append((ref, factor, db))
     return out
 
 
