@@ -79,6 +79,14 @@ def main():
         record("a nominal that will not solve is an error", ok=True, detail="raised")
 
     print()
+    print("what is not a simulator problem")
+    try:
+        netfault.candidates(src, FREQS, sulky(), ["R2", "R99"], factors)
+        record("a ref the netlist does not have is an error", ok=False, detail="it returned")
+    except ValueError as e:
+        record("a ref the netlist does not have is an error", ok=True, detail=str(e)[:46])
+
+    print()
     print("the survivors are still usable")
     truth = mna.runner("out")(netfault.perturb(src, "R2", 2.2), FREQS)
     ranked = netfault.match(survived, truth)

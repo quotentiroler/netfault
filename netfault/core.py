@@ -118,8 +118,16 @@ def candidates(src, freqs, simulate, refs=None, factors=(), *, levels=None):
     warning naming it, and the rest of the dictionary is still built.  The
     nominal one is not optional and its failure is raised.
     """
+    known = components(src)
     if refs is None:
-        refs = sorted(components(src))
+        refs = sorted(known)
+
+    # A ref that is not in the deck is the caller's mistake, not a
+    # simulator that would not converge, and must not be skipped as one.
+    unknown = sorted(set(refs) - set(known))
+    if unknown:
+        msg = f"not in the netlist: {', '.join(unknown)}"
+        raise ValueError(msg)
 
     # Not optional: if this will not solve, simulate() is broken.
     out = [(None, 1.0, signature(src, freqs, simulate, levels))]
