@@ -57,6 +57,14 @@ def values():
         record(f"{text:<8} -> {want:g}", abs(got - want) <= abs(want) * 1e-9,
                f"got {got:g}")
 
+    # perturb() writes every value back through format_value, so a value
+    # that does not survive the trip is a fault injected by the library.
+    worst = 0.0
+    for v in (4700.0, 1e-8, 2.2e13, 6.8e-11, 1.0 / 3, 4.7e-12 * 1e9):
+        back = netfault.parse_value(netfault.format_value(v))
+        worst = max(worst, abs(back - v) / v)
+    record("format_value survives parse_value", worst < 1e-5, f"worst {worst:.1e}")
+
 
 def parsing():
     print("components / perturb")
@@ -190,9 +198,45 @@ def runnable():
     record("shebang scripts are executable", not bad, " ".join(bad))
 
 
+def shape_not_level():
+    """residual() is what every ranking is ordered by."""
+    print("residual  (how far apart two curves are)")
+    a = np.array([0.0, 1.0, 2.0, 3.0])
+    record("a curve against itself is zero", netfault.residual(a, a) == 0.0)
+    record("a constant offset is not a difference",
+           netfault.residual(a, a + 7.0) == 0.0)
+    record("unaligned, that offset is the whole answer",
+           abs(netfault.residual(a, a + 7.0, align=False) - 7.0) < 1e-12)
+
+    #
+    # Each rung was measured at its own drive, so one offset across the
+    # whole ladder would fold those differences into the residual.
+    #
+    lad = np.array([[0.0, 1.0, 2.0], [0.0, 1.0, 2.0]])
+    off = lad + np.array([[5.0], [-9.0]])
+    record("a ladder is aligned rung by rung", netfault.residual(lad, off) == 0.0)
+    record("and a real difference still survives it",
+           netfault.residual(lad, off + np.array([[0.0, 0.0, 1.0]] * 2)) > 0.4)
+
+
+def wrapper():
+    """localise() has to be candidates() then match(), and nothing else."""
+    print("localise  (the two steps in one call)")
+    src = deck("ladder.cir")
+    sim = mna.runner("out")
+    refs, factors = ["R2", "C2"], (0.47, 2.2)
+    measured = mna.runner("out")(netfault.perturb(src, "R2", 2.2), FREQS)
+    long_way = netfault.match(
+        netfault.candidates(src, FREQS, sim, refs, factors), measured)
+    short_way = netfault.localise(src, FREQS, measured, sim, refs, factors)
+    record("agrees with doing it by hand", long_way == short_way,
+           f"{short_way[0][1]} {short_way[0][2]:g}")
+
+
 def main():
     for stage in (solver_is_right, values, parsing, finds_the_fault,
-                  realism, refuses_to_guess, runnable):
+                  realism, refuses_to_guess, shape_not_level, wrapper,
+                  runnable):
         stage()
         print()
     if FAILED:

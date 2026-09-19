@@ -110,8 +110,28 @@ def end_to_end():
            f"{hits}/{len(trials)}")
 
 
+def budget():
+    """The two numbers a bench quotes about itself."""
+    print("budget     (what the bench says about itself)")
+    src = deck("rc.cir")
+
+    flat = measure.calibrate(through(src, gain_db=6.0), FREQS, fs=FS)
+    want = mna.solve(src, "out", FREQS) + 6.0
+    record("calibrate reports the loop's own response",
+           float(np.max(np.abs(flat - want))) < 0.01,
+           f"worst {float(np.max(np.abs(flat - want))):.5f} dB")
+
+    quiet = measure.repeatability(through(src), FREQS, fs=FS)
+    record("a bench with no noise repeats exactly", quiet < 1e-9, f"{quiet:.2e} dB")
+
+    loud = [measure.repeatability(through(src, noise=n, seed=7), FREQS, fs=FS)
+            for n in (1e-5, 1e-3)]
+    record("and a noisier one reads higher, in order",
+           quiet <= loud[0] < loud[1], " ".join(f"{v:.5f}" for v in loud))
+
+
 def main():
-    for stage in (extraction, matches_theory, calibration, end_to_end):
+    for stage in (extraction, matches_theory, calibration, budget, end_to_end):
         stage()
         print()
     if FAILED:
