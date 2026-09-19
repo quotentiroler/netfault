@@ -1,0 +1,26 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install numpy
+      - run: python tests/run.py
+      - run: python tests/test_measure.py
+      - run: python tests/test_levels.py
+      # Skips itself where kicad-cli is absent, which is every hosted runner.
+      - run: python tests/test_kicad.py
