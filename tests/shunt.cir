@@ -1,0 +1,10 @@
+* A one-pole divider with a shunt across the source.
+*
+* Rpd sits across an ideal source, so no value it takes moves any node.
+* rat-helios.cir has the same part as a 2.2M input pull-down.
+*
+V1  in  0    AC 1
+Rpd in  0    2.2meg
+R1  in  out  10k
+C1  out 0    10n
+.end
