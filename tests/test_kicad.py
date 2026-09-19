@@ -29,6 +29,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from harness import record, summary
+
 import netfault
 from netfault import mna
 from netfault.values import parse_value
@@ -39,15 +41,8 @@ FREQS = list(np.geomspace(100.0, 6400.0, 7))
 FACTORS = (0.1, 0.47, 2.2, 10.0)
 NODE = "/out"
 NOISE = 0.005
-FAILED = []
 
 WINDOWS_VERSIONS = ("9.0", "8.0", "7.0")
-
-
-def record(name, ok, detail=""):
-    print(f"  {name:<52} {'ok' if ok else 'FAIL'}{'  ' + detail if detail else ''}")
-    if not ok:
-        FAILED.append(name)
 
 
 def kicad_cli():
@@ -151,13 +146,7 @@ def main():
            "{} at {:.4f} dB".format(v["verdict"], v["residual"]))
 
     print()
-    if FAILED:
-        print(f"test-kicad: {len(FAILED)} FAILED")
-        for f in FAILED:
-            print(f"    {f}")
-        return 1
-    print("test-kicad: ok - schematic to named part, no hardware")
-    return 0
+    return summary("test-kicad", " - schematic to named part, no hardware")
 
 
 if __name__ == "__main__":

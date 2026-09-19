@@ -16,23 +16,14 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from harness import deck, record, summary
+
 import netfault
 from netfault import mna
 
 HERE = Path(__file__).resolve().parent
 FREQS = list(np.geomspace(20.0, 20000.0, 25))
 FACTORS = (0.1, 0.22, 0.47, 2.2, 4.7, 10.0)
-FAILED = []
-
-
-def deck(name):
-    return (HERE / name).read_text()
-
-
-def record(name, ok, detail=""):
-    print(f"  {name:<48} {'ok' if ok else 'FAIL'}{'  ' + detail if detail else ''}")
-    if not ok:
-        FAILED.append(name)
 
 
 def solver_is_right():
@@ -239,13 +230,7 @@ def main():
                   runnable):
         stage()
         print()
-    if FAILED:
-        print(f"netfault: {len(FAILED)} FAILED")
-        for f in FAILED:
-            print(f"    {f}")
-        return 1
-    print("netfault: ok")
-    return 0
+    return summary("netfault")
 
 
 if __name__ == "__main__":

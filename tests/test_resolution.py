@@ -11,19 +11,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from harness import record, summary
+
 import netfault
 from netfault import mna
 
 HERE = Path(__file__).resolve().parent
 FREQS = [100.0, 1000.0, 10000.0]
 REFS = ["Rpd", "R1", "C1"]
-FAILED = []
-
-
-def record(name, ok, detail=""):
-    print(f"  {name:<52} {'ok' if ok else 'FAIL'}{'  ' + detail if detail else ''}")
-    if not ok:
-        FAILED.append(name)
 
 
 def main():
@@ -68,13 +63,7 @@ def main():
            v["verdict"] == "ambiguous", f"{v['verdict']}, margin {v['margin']:.6f} dB")
 
     print()
-    if FAILED:
-        print(f"resolution: {len(FAILED)} FAILED")
-        for f in FAILED:
-            print(f"    {f}")
-        return 1
-    print("resolution: ok")
-    return 0
+    return summary("resolution")
 
 
 if __name__ == "__main__":

@@ -15,18 +15,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from harness import record, summary
+
 import netfault
 from netfault import mna
 
 HERE = Path(__file__).resolve().parent
 FREQS = [100.0, 1000.0, 10000.0]
-FAILED = []
-
-
-def record(name, ok, detail=""):
-    print(f"  {name:<52} {'ok' if ok else 'FAIL'}{'  ' + detail if detail else ''}")
-    if not ok:
-        FAILED.append(name)
 
 
 class BoomError(RuntimeError):
@@ -95,13 +90,7 @@ def main():
            f"{ranked[0][1]} {ranked[0][2]:g}")
 
     print()
-    if FAILED:
-        print(f"unsolvable: {len(FAILED)} FAILED")
-        for f in FAILED:
-            print(f"    {f}")
-        return 1
-    print("unsolvable: ok")
-    return 0
+    return summary("unsolvable")
 
 
 if __name__ == "__main__":
