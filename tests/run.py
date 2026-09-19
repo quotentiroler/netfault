@@ -7,6 +7,8 @@
 # to the localiser as though it came off a board, and it has to name the
 # part it was never told about.
 #
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -163,9 +165,34 @@ def refuses_to_guess():
            v["verdict"])
 
 
+def runnable():
+    """A script claiming a shebang has to be marked runnable.
+
+    ruff's EXE001 needs a file mode, so Windows cannot see this and CI is
+    the first to say so. git records the bit either way.
+    """
+    print("packaging")
+    git = shutil.which("git")
+    if git is None:
+        record("shebang scripts are executable", ok=True, detail="no git, skipped")
+        return
+    out = subprocess.run([git, "ls-files", "-s", "*.py"], cwd=HERE.parent,  # noqa: S603
+                         capture_output=True, text=True, check=False)
+    if out.returncode:
+        record("shebang scripts are executable", ok=True, detail="git failed")
+        return
+    bad = []
+    for line in out.stdout.splitlines():
+        mode, _, rest = line.partition(" ")
+        path = HERE.parent / rest.split("	", 1)[-1]
+        if path.exists() and path.read_text(encoding="utf-8")[:2] == "#!" and mode != "100755":
+            bad.append(rest.split("	", 1)[-1])
+    record("shebang scripts are executable", not bad, " ".join(bad))
+
+
 def main():
     for stage in (solver_is_right, values, parsing, finds_the_fault,
-                  realism, refuses_to_guess):
+                  realism, refuses_to_guess, runnable):
         stage()
         print()
     if FAILED:
