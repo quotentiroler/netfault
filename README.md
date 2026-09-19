@@ -110,6 +110,49 @@ Calibrate first with the output looped straight back, and subtract. That
 step is what decides whether the budget is met: the extraction itself is
 good to about 0.004 dB, so everything left over is the interface.
 
+## Your first bench
+
+`examples/breadboard.cir` is deliberately the cheapest circuit that has
+anything to say: a two-pole RC low-pass, four jellybean parts, corners in
+the audio band. Two 10k resistors, two 10n capacitors, a breadboard, two
+jack leads and any interface that records while it plays.
+
+`Rsrc` and `Rin` in that deck are the interface's own output and input
+impedance rather than parts you fit, which is why they are excluded below.
+
+**1. Before building anything**, check the install against the netlist:
+
+```bash
+uv run examples/bench.py examples/breadboard.cir --simulate --fault C2:4.7
+```
+
+It should name `C2` at `4.7x`. If it does not, stop here; no wiring will
+fix it.
+
+**2. Build the divider**, then run it for real. One invocation asks for
+the loopback first and the board second:
+
+```bash
+uv run examples/bench.py examples/breadboard.cir --exclude Rsrc,Rin
+```
+
+**3. Read the repeatability figure it prints before anything else.** That
+is the noise floor every later threshold is measured against. If it is far
+above 0.02 dB RMS, the answer is in the cabling or the interface, and
+nothing downstream will be trustworthy until it comes down.
+
+**4. A healthy board has to come back `nominal`.** This is the step worth
+being stubborn about. If a board you know is correct reads `unexplained`,
+the deck does not describe the rig, and almost always the missing piece is
+the source and load impedance. Fix the netlist, not the board. If it reads
+as a fault with a comfortable margin, that is the failure mode documented
+under [When the answer is not a part](#when-the-answer-is-not-a-part), and
+it is the reason that section exists.
+
+**5. Only then plant one.** Swap a 10n for a 47n and it should name `C2`
+at about `4.7x`. A fault found before step 4 passed is not evidence of
+anything.
+
 ## Circuits that change with drive
 
 A linear network is the same network at every level, so one sweep says
@@ -227,3 +270,5 @@ there first.
 - **Not validated against a physical board.** Every number here comes from
   an injected fault. The open question is whether a real measurement, with
   its noise floor and converter distortion, clears the budget above.
+  [Your first bench](#your-first-bench) is four parts and an afternoon, and
+  answering it does not need anything more than that.
