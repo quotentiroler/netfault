@@ -127,9 +127,35 @@ def report(v, parts, noise, ranked):
           " the next answer")
 
 
+def printable(text):
+    """Device names carry anything the driver felt like, consoles do not."""
+    encoding = sys.stdout.encoding or "utf-8"
+    return text.encode(encoding, "replace").decode(encoding)
+
+
+def list_devices():
+    """Every device and its id, so --device has something to name."""
+    import sounddevice as sd  # noqa: PLC0415
+
+    default_in, default_out = sd.default.device
+    for i, d in enumerate(sd.query_devices()):
+        legs = []
+        if d["max_input_channels"]:
+            legs.append(f"in x{d['max_input_channels']}")
+        if d["max_output_channels"]:
+            legs.append(f"out x{d['max_output_channels']}")
+        mark = "".join(("<" if i == default_in else " ", ">" if i == default_out else " "))
+        print(f"  {i:>3} {mark} {printable(d['name'])[:44]:<44} {', '.join(legs)}")
+    print()
+    print("  < is the current input, > the current output.")
+    print("  Pass one id for both, or 'in,out' for a pair:  --device 1,3")
+
+
 def parse_args():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("netlist", help="the deck the board claims to be")
+    ap.add_argument("netlist", nargs="?", help="the deck the board claims to be")
+    ap.add_argument("--list-devices", action="store_true",
+                    help="print every device and its id, then stop")
     ap.add_argument("--node", default="out", help="output node name")
     ap.add_argument("--fs", type=int, default=48000)
     ap.add_argument("--points", type=int, default=25)
@@ -154,6 +180,12 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.list_devices:
+        list_devices()
+        return 0
+    if not args.netlist:
+        sys.exit("which netlist? pass one, or --list-devices to see the hardware")
+
     src = Path(args.netlist).read_text()
     freqs = list(np.geomspace(args.lo, args.hi, args.points))
     amp = 10.0 ** (args.level / 20.0)
