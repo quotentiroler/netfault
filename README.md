@@ -2,7 +2,7 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22744875.svg)](https://doi.org/10.5281/zenodo.22744875)
 
-Measure a linear circuit, and find out **which component is wrong**.
+Measure a circuit, and find out **which component is wrong**.
 
 Comparing a build against its schematic and reporting "you disagree above
 2 kHz" is the easy half. What somebody holding a soldering iron needs is a
@@ -110,6 +110,37 @@ Calibrate first with the output looped straight back, and subtract. That
 step is what decides whether the budget is met: the extraction itself is
 good to about 0.004 dB, so everything left over is the interface.
 
+## Circuits that change with drive
+
+A linear network is the same network at every level, so one sweep says
+everything about it. A circuit with a clipper in it is not, and the part
+that decides where it folds does nothing at all until the drive reaches
+it. Ranking on one sweep cannot tell a wrong one from a right one, and it
+does not fail loudly when it cannot: it ranks on the noise instead.
+
+So a signature can be a **ladder**, one response per drive level:
+
+```python
+LEVELS = (-36.0, -24.0, -12.0)
+cands = netfault.candidates(src, freqs, simulate, refs, factors, levels=LEVELS)
+meas  = netfault.signature(src, freqs, simulate, levels=LEVELS)
+```
+
+`simulate` is then called as `simulate(src, freqs, level)`, and a candidate
+is a `(level, freq)` array rather than a curve. Measured on a test network
+whose clipping stage only engages above a knee:
+
+| | one sweep at -40 dB | ladder at -40/-20/-6 |
+|---|---|---|
+| the clipper's own part | within 0.0036 dB of every rival, under the floor | named |
+| verdict | `ambiguous` | `fault` |
+| all parts | — | 12/12 |
+
+Each rung is aligned **on its own**. It was measured at its own drive
+through whatever gain the bench had at the time, so one offset across the
+whole ladder would fold those differences into the residual and rank on
+them.
+
 ## When the answer is not a part
 
 `match()` always returns a closest candidate, because something always is
@@ -159,6 +190,8 @@ What is here that is not in a paper:
 - opens and shorts in the dictionary beside parametric drift, since a cold
   joint and a bridged pad are the common faults and neither is a value
   being off by a factor
+- a signature that can be a ladder, so a circuit whose behaviour depends
+  on drive can be diagnosed at all
 
 If you are benchmarking a new diagnosis method, this is meant to serve as
 the classical baseline rather than yet another private reimplementation of
@@ -184,7 +217,13 @@ there first.
   and a much weaker claim. A board with two faults usually announces
   itself anyway.
 - **Linear devices in `mna`.** R, C, L and an independent voltage source.
-  Anything else goes to a real simulator.
+  A nonlinear circuit goes to a real simulator through the same
+  `simulate` seam, and wants a ladder rather than a sweep.
+- **A dictionary is slow for nonlinear circuits.** One ngspice transient
+  is around 1.8 s, so 23 parts at eight factors over three rungs and eight
+  points is about two hours. It is built once per board and matched in
+  milliseconds after that, which is why `candidates()` and `match()` are
+  separate.
 - **Not validated against a physical board.** Every number here comes from
   an injected fault. The open question is whether a real measurement, with
   its noise floor and converter distortion, clears the budget above.
