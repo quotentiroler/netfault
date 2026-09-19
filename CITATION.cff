@@ -13,8 +13,8 @@ type: software
 authors:
   - family-names: Nussbaumer
     given-names: Max
-version: 0.1.1
-date-released: "2026-09-14"
+version: 0.2.0
+date-released: "2026-09-19"
 license: MIT
 repository-code: "https://github.com/quotentiroler/netfault"
 doi: "10.5281/zenodo.22744875"
