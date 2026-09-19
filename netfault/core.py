@@ -121,21 +121,11 @@ def candidates(src, freqs, simulate, refs=None, factors=(), *, levels=None):
     if refs is None:
         refs = sorted(components(src))
 
-    #
-    # The nominal deck has to solve.  If it does not, the simulate() being
-    # handed in is broken rather than the perturbation, and skipping the
-    # lot would hand back a dictionary of one entry that agrees with
-    # everything.
-    #
+    # Not optional: if this will not solve, simulate() is broken.
     out = [(None, 1.0, signature(src, freqs, simulate, levels))]
 
-    #
-    # A single candidate is allowed to fail.  Scaling a part to SHORT or
-    # OPEN can leave a circuit a real simulator will not converge on, and
-    # a candidate nothing can simulate is one nothing can match either.
-    # Dropping it costs one answer; propagating costs the whole build,
-    # which for a nonlinear circuit is hours.
-    #
+    # SHORT and OPEN can leave a circuit a simulator will not converge on.
+    # One lost answer beats a lost build.
     for ref in refs:
         for factor in factors:
             try:
