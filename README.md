@@ -72,6 +72,40 @@ ranked = netfault.match(cands, measured)
 print(ranked[0])          # (residual_db, 'C2', 4.7)
 ```
 
+## With ngspice
+
+`netfault.ngspice` is that simulator, ready to pass in. It runs `ngspice -b`
+on the same deck, so nothing about the netlist changes:
+
+```python
+from netfault import ngspice
+
+ngspice.runner("out")       # .ac, the drop-in for mna.runner("out")
+ngspice.tran_runner("out")  # transient, for circuits that change with drive
+```
+
+`tran_runner` replaces the deck's AC source with a sine at each rung's
+level in dBV peak, lets it settle, keeps whole cycles and correlates the
+fundamental, the same way `measure` reads a bench. One ngspice process
+covers every frequency of a rung. On a linear deck it agrees with `.ac` to
+about 0.005 dB, ten times inside the measurement budget below; on a diode
+clipper whose series resistor is invisible at -40 dBV, a ladder of
+-40/-12/+6 dBV names it.
+
+```python
+cands = netfault.candidates(src, freqs, ngspice.tran_runner("out"),
+                            factors=netfault.FACTORS, levels=(-40, -12, 6))
+```
+
+A candidate ngspice will not converge on raises `ngspice.SpiceError` and
+is dropped from the dictionary with a warning, like any other refusal.
+
+It finds `ngspice_con` or `ngspice` on `PATH`; set `NETFAULT_NGSPICE` to
+point at a binary anywhere else. `apt install ngspice` and
+`brew install ngspice` both work, and on Windows the 64-bit zip from
+[ngspice.sourceforge.io](https://ngspice.sourceforge.io/download.html)
+needs no installer.
+
 ## What it needs from a measurement
 
 The ranking separates candidates by fractions of a dB, so the measurement
@@ -260,7 +294,7 @@ there first.
   and a much weaker claim. A board with two faults usually announces
   itself anyway.
 - **Linear devices in `mna`.** R, C, L and an independent voltage source.
-  A nonlinear circuit goes to a real simulator through the same
+  A nonlinear circuit goes to [ngspice](#with-ngspice) through the same
   `simulate` seam, and wants a ladder rather than a sweep.
 - **A dictionary is slow for nonlinear circuits.** One ngspice transient
   is around 1.8 s, so 23 parts at eight factors over three rungs and eight

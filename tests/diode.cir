@@ -1,0 +1,9 @@
+* Diode clipper.  Rd only matters once the drive turns the diodes on.
+V1 in 0 AC 1
+R1 in out 10k
+C1 out 0 4.7n
+Rd out d 2.2k
+D1 d 0 dsil
+D2 0 d dsil
+.model dsil D(Is=2.52n N=1.752 Rs=0.568)
+.end
