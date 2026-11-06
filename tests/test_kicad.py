@@ -130,8 +130,8 @@ def main():
                                  noise_db=netfault.FLOOR_DB)
             if v["ref"] != ref or abs(v["factor"] - factor) > 1e-9:
                 missed.append("{} {} -> {} {}".format(
-                    ref, netfault.describe(factor), v["ref"],
-                    "-" if v["ref"] is None else netfault.describe(v["factor"])))
+                    ref, netfault.describe(factor, ref), v["ref"],
+                    "-" if v["ref"] is None else netfault.describe(v["factor"], v["ref"])))
     record("every planted fault names its own part and factor", not missed,
            f"{len(refs) * len(FACTORS) - len(missed)} of {len(refs) * len(FACTORS)}")
     for m in missed:

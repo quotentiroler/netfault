@@ -18,10 +18,11 @@
 #
 import re
 import warnings
+from itertools import combinations
 
 import numpy as np
 
-from .values import format_value, parse_value
+from .values import format_si, format_value, parse_value
 
 _DEVICE = re.compile(r"^([RCL]\w*)(\s+)(\S+)(\s+)(\S+)(\s+)(\S+)\s*$", re.MULTILINE)
 
@@ -136,13 +137,178 @@ def candidates(src, freqs, simulate, refs=None, factors=(), *, levels=None):
     # One lost answer beats a lost build.
     for ref in refs:
         for factor in factors:
-            try:
-                db = signature(perturb(src, ref, factor), freqs, simulate, levels)
-            except Exception as e:  # noqa: BLE001 - simulate() is the caller's, and raises anything
-                warnings.warn(f"{ref} {describe(factor)} will not simulate: {e}",
-                              UnsolvableCandidate, stacklevel=2)
-                continue
-            out.append((ref, factor, db))
+            db = _trial(src, ref, factor, freqs, simulate, levels)
+            if db is not None:
+                out.append((ref, factor, db))
+    return out
+
+
+def _trial(src, ref, value, freqs, simulate, levels):
+    try:
+        return signature(build(src, ref, value), freqs, simulate, levels)
+    except Exception as e:  # noqa: BLE001 - simulate() is the caller's, and raises anything
+        warnings.warn(f"{ref} {describe(value, ref)} will not simulate: {e}",
+                      UnsolvableCandidate, stacklevel=3)
+        return None
+
+
+STRAY = (10e-12, 22e-12, 47e-12, 100e-12, 220e-12, 470e-12, 1e-9, 2.2e-9, 4.7e-9, 10e-9)
+BRIDGE = (1.0, 10.0, 100.0, 1e3, 1e4)
+
+_END = re.compile(r"^\.end\s*$", re.MULTILINE | re.IGNORECASE)
+
+
+def added(ref):
+    """Whether a candidate is a part the deck does not have: '+C(out)', '+R(a,b)'."""
+    return isinstance(ref, str) and ref.startswith("+")
+
+
+def attach(src, line):
+    """The deck with one more device line, before its .end."""
+    ends = list(_END.finditer(src))
+    if not ends:
+        return f"{src.rstrip()}\n{line}\n"
+    at = ends[-1].start()
+    return f"{src[:at]}{line}\n{src[at:]}"
+
+
+def build(src, ref, value):
+    """The deck a candidate describes: a part scaled by 'value', or an added part of 'value'."""
+    if not added(ref):
+        return perturb(src, ref, value)
+    kind, nodes = ref[1], ref[3:-1].split(",")
+    a, b = (nodes[0], "0") if kind == "C" else nodes
+    parts = components(src)
+    name = f"{kind}netfault"
+    while name in parts:
+        name += "_"
+    return attach(src, f"{name} {a} {b} {format_value(value)}")
+
+
+def additions(src, freqs, simulate, *, nodes=None, stray=STRAY, bridges=BRIDGE,
+              levels=None):
+    """Faults that are not a part being wrong, as [(ref, value, db)].
+
+    '+C(node)' is 'value' farads from a node to ground: cable, breadboard,
+    an interface's input.  '+R(a,b)' is 'value' ohms between two nodes no
+    part joins: a solder bridge.  Add these to candidates() and an
+    'unexplained' board can come back naming what the deck is missing.
+    """
+    parts = components(src)
+    wired = {frozenset(p["nodes"]) for k, p in parts.items() if k[0].upper() == "R"}
+    found = sorted(set(nodes or {n for p in parts.values() for n in p["nodes"]}) - {"0"})
+    plans = [(f"+C({n})", v) for n in found for v in stray]
+    plans += [(f"+R({a},{b})", v) for a, b in combinations([*found, "0"], 2)
+              if frozenset((a, b)) not in wired for v in bridges]
+    out = []
+    for ref, value in plans:
+        db = _trial(src, ref, value, freqs, simulate, levels)
+        if db is not None:
+            out.append((ref, value, db))
+    return out
+
+
+REFINE_SPAN = 3.5
+REFINE_STEPS = 30
+
+
+def refine(src, freqs, simulate, measured, ref, value, *, levels=None, align=True):
+    """Slide one candidate's value to where it fits best: (residual_db, ref, value).
+
+    A dictionary is a grid, and a real fault is rarely on it: 1.5 nF of
+    cable sits between 1 nF and 2.2 nF and fits neither.  This searches
+    value / REFINE_SPAN to value * REFINE_SPAN on a log scale (golden
+    section), which reaches across the widest step of every grid here.
+    """
+    span, steps = REFINE_SPAN, REFINE_STEPS
+    def cost(x):
+        db = signature(build(src, ref, 10.0 ** x), freqs, simulate, levels)
+        return residual(db, measured, align=align)
+
+    ratio = (np.sqrt(5.0) - 1.0) / 2.0
+    lo, hi = np.log10(value / span), np.log10(value * span)
+    c, d = hi - ratio * (hi - lo), lo + ratio * (hi - lo)
+    fc, fd = cost(c), cost(d)
+    for _ in range(steps):
+        if fc < fd:
+            hi, d, fd = d, c, fc
+            c = hi - ratio * (hi - lo)
+            fc = cost(c)
+        else:
+            lo, c, fc = c, d, fd
+            d = lo + ratio * (hi - lo)
+            fd = cost(d)
+    best = c if fc < fd else d
+    return (min(fc, fd), ref, float(10.0 ** best))
+
+
+def _once(ranked):
+    best = {}
+    for r in sorted(ranked, key=lambda r: r[0]):
+        best.setdefault(r[1], r)
+    return sorted(best.values(), key=lambda r: r[0])
+
+
+NEAR_NOMINAL = 1.02
+
+
+def sharpen(src, freqs, simulate, measured, ranked, *, top=None, levels=None, align=True):
+    """refine() the best 'top' refs of a ranking (all by default), keeping each ref once.
+
+    Keeping each ref once makes the runner-up a different explanation
+    rather than the same part one grid step over.  OPEN and SHORT are left
+    as they are: they are states, not values to slide.  A board whose best
+    answer is already nominal is left alone, and a part that slides back to
+    within 2% of its own value is dropped, because that is nominal again.
+    With ngspice every refine is about 30 simulations, so pass a 'top'.
+    """
+    out = _once(ranked)
+    if out[0][1] is None:
+        return out
+    slidable = [r for r in out if r[1] is not None and (added(r[1]) or not _extreme(r[2]))]
+    for _r, ref, value in slidable[:top]:
+        try:
+            r = refine(src, freqs, simulate, measured, ref, value, levels=levels, align=align)
+        except Exception as e:  # noqa: BLE001 - simulate() is the caller's, and raises anything
+            warnings.warn(f"{ref} would not refine: {e}", UnsolvableCandidate, stacklevel=2)
+            continue
+        if added(ref) or abs(np.log(r[2])) > np.log(NEAR_NOMINAL):
+            out.append(r)
+    return _once(out)
+
+
+def _admittance(kind, value):
+    return value if kind == "C" else 1.0 / value
+
+
+def twins(src, ref, value):
+    """Other answers no measurement can tell from (ref, value), as [(ref, value)].
+
+    Parts of one kind across the same two nodes add up, so 1.5 nF more from
+    'out' to ground IS C3 being 2.5x when C3 is 1 nF from 'out' to ground.
+    """
+    parts = components(src)
+    if added(ref):
+        kind, nodes = ref[1], ref[3:-1].split(",")
+        pair = frozenset((nodes[0], "0") if kind == "C" else nodes)
+        extra = _admittance(kind, value)
+    elif ref in parts and not _extreme(value):
+        kind, pair = ref[0].upper(), frozenset(parts[ref]["nodes"])
+        own = parts[ref]["value"]
+        extra = _admittance(kind, own * value) - _admittance(kind, own)
+    else:
+        return []
+    out = []
+    for other, p in sorted(parts.items()):
+        if other == ref or other[0].upper() != kind or frozenset(p["nodes"]) != pair:
+            continue
+        y = _admittance(kind, p["value"]) + extra
+        if y > 0:
+            out.append((other, _admittance(kind, y) / p["value"]))
+    named = sorted(pair - {"0"}) + sorted(pair & {"0"})
+    if not added(ref) and extra > 0 and (kind == "R" or named[-1] == "0"):
+        label = named[0] if kind == "C" else ",".join(named)
+        out.append((f"+{kind}({label})", _admittance(kind, extra)))
     return out
 
 
@@ -189,13 +355,24 @@ SHORT = 1e-9
 FACTORS = (SHORT, 0.1, 0.22, 0.47, 2.2, 4.7, 10.0, OPEN)
 
 
-def describe(factor):
-    """'OPEN', 'SHORT', or 'x4.7' - what to print for a factor."""
+def describe(factor, ref=None):
+    """'OPEN', 'SHORT', 'x4.7', or for an added part its value: '2.2nF', '1ohm'.
+
+    A capacitor scaled up is a short and scaled down is an open, the other
+    way round from a resistor or an inductor, so pass 'ref' to get it right.
+    """
+    if added(ref):
+        return format_si(factor) + ("F" if ref.startswith("+C") else "ohm")
+    flip = isinstance(ref, str) and ref[:1].upper() == "C"
     if factor >= OPEN / 1e3:
-        return "OPEN"
+        return "SHORT" if flip else "OPEN"
     if factor <= SHORT * 1e3:
-        return "SHORT"
+        return "OPEN" if flip else "SHORT"
     return f"x{factor:g}"
+
+
+def _extreme(factor):
+    return factor >= OPEN / 1e3 or factor <= SHORT * 1e3
 
 
 UNEXPLAINED = 3.0
@@ -223,7 +400,11 @@ def explain(cands, measured, *, noise_db=0.02, margin_db=0.02, align=True):
       ambiguous    a part fits, but not better than the next answer
       unexplained  nothing here fits; the deck does not describe the rig
     """
-    ranked = match(cands, measured, align=align)
+    return judge(match(cands, measured, align=align), noise_db=noise_db, margin_db=margin_db)
+
+
+def judge(ranked, *, noise_db=0.02, margin_db=0.02):
+    """explain()'s verdict on a ranking that is already made."""
     best = ranked[0]
     runner = ranked[1] if len(ranked) > 1 else (float("inf"), None, 1.0)
     margin = runner[0] - best[0]
@@ -239,6 +420,40 @@ def explain(cands, measured, *, noise_db=0.02, margin_db=0.02, align=True):
 
     return {"verdict": verdict, "ref": best[1], "factor": best[2],
             "residual": best[0], "margin": margin, "ranked": ranked}
+
+
+def diagnose(src, freqs, simulate, measured, *, noise_db, refs=None, factors=FACTORS,
+             rig=True, top=None, levels=None, align=True, margin_db=0.02):
+    """The whole question for one board: dictionary, rig additions, refine, verdict.
+
+    With 'rig' the dictionary also holds what the deck does not (stray
+    capacitance, solder bridges), and the 'top' answers are slid off the
+    grid to their best value before the verdict is reached.
+    """
+    cands = candidates(src, freqs, simulate, refs, factors, levels=levels)
+    if rig:
+        cands += additions(src, freqs, simulate, levels=levels)
+    ranked = match(resolvable(cands, noise_db, align=align), measured, align=align)
+    return conclude(src, freqs, simulate, measured, ranked, noise_db=noise_db, top=top,
+                    levels=levels, align=align, margin_db=margin_db)
+
+
+def conclude(src, freqs, simulate, measured, ranked, *, noise_db, top=None, levels=None,
+             align=True, margin_db=0.02):
+    """sharpen() a ranking, fold the winner's twins into it, and judge().
+
+    The twins come back under 'twins' instead of as the runner-up, since
+    an answer cannot be ambiguous against itself.
+    """
+    ranked = sharpen(src, freqs, simulate, measured, ranked, top=top, levels=levels,
+                     align=align)
+    _r, ref, value = ranked[0]
+    same = twins(src, ref, value) if ref is not None else []
+    alias = {r for r, _v in same}
+    v = judge([r for r in ranked if r[1] not in alias],
+              noise_db=noise_db, margin_db=margin_db)
+    v["twins"] = same
+    return v
 
 
 def resolution(cands, *, align=True):

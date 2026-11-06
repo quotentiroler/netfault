@@ -1,0 +1,8 @@
+* One pole, then a high-impedance tap with no capacitor of its own.
+* Capacitance at 'out' is a second pole no part in here can stand in for.
+V1 in 0 AC 1
+R1 in a 10k
+C1 a 0 10n
+R2 a out 47k
+RL out 0 100k
+.end

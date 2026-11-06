@@ -248,6 +248,44 @@ Two more things stop a healthy board being blamed:
   own source and load impedance belong in the deck, and belong out of the
   candidate set: `--exclude Rsrc,Rin`.
 
+## Naming what the deck is missing
+
+`unexplained` says the deck is wrong without saying how. `diagnose()` goes
+one step further and puts the two commonest omissions in the dictionary:
+
+- `+C(node)`: capacitance from a node to ground that the deck does not
+  have. Cable, breadboard rows, an interface's input. 10 pF to 10 nF.
+- `+R(a,b)`: a resistance between two nodes no resistor joins. A solder
+  bridge at 1 ohm, leakage or flux up to 10 k. Across a capacitor it is its
+  own fault; across a resistor it is that resistor being low, so it is left
+  to the resistor.
+
+```python
+v = netfault.diagnose(src, freqs, simulate, meas, noise_db=noise)
+v["ref"], v["factor"]   # ('+C(out)', 1.5e-09)
+v["twins"]              # answers no measurement can tell from this one
+```
+
+A grid never holds the real value, so the best few answers are then slid
+along their own value (`refine()`, a golden-section search on a log scale)
+before the verdict. 1.5 nF of cable comes back as 1.5 nF, R3 at 1.6x as
+1.6x, and a 330 ohm bridge as 330 ohm, none of which is on a grid.
+
+Two consequences worth knowing:
+
+- **Some answers are the same answer.** 1.5 nF more from `out` to ground
+  *is* C3 at 2.5x when C3 runs from `out` to ground. `twins` lists those,
+  and they are never counted as the runner-up.
+- **Refining finds rivals as well as faults.** On the breadboard deck,
+  C2 at 4.7x and R1 at 7.1x are 0.014 dB apart once R1 may slide off the
+  grid. The grid alone named C2 with confidence and would have named C2 for
+  a real R1 fault too; `ambiguous` is the honest answer.
+
+With `mna` refining everything takes a fraction of a second. With ngspice
+each refine is about 30 simulations, so pass `top=` to refine only the
+best few. `bench.py` does all of this by default, and `--no-rig` keeps it
+to the parts on the board. `--fault "+C(out):2.2n"` injects one.
+
 ## Relation to prior work
 
 The method here is a **fault dictionary** - the simulation-before-test
@@ -269,6 +307,9 @@ What is here that is not in a paper:
   being off by a factor
 - a signature that can be a ladder, so a circuit whose behaviour depends
   on drive can be diagnosed at all
+- stray capacitance and bridges in the dictionary beside the parts, and a
+  continuous refine off the grid, with electrically identical answers
+  reported together rather than as rivals
 
 If you are benchmarking a new diagnosis method, this is meant to serve as
 the classical baseline rather than yet another private reimplementation of

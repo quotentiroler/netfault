@@ -1,29 +1,43 @@
 from . import measure, mna, ngspice
 from .core import (
+    BRIDGE,
     FACTORS,
     FLOOR_DB,
     OPEN,
     SHORT,
+    STRAY,
     UNEXPLAINED,
     UnsolvableCandidate,
+    added,
+    additions,
+    attach,
+    build,
     candidates,
     components,
+    conclude,
     describe,
+    diagnose,
     explain,
+    judge,
     localise,
     match,
     perturb,
+    refine,
     residual,
     resolution,
     resolvable,
+    sharpen,
     signature,
+    twins,
 )
-from .values import format_value, parse_value
+from .values import format_si, format_value, parse_value
 
 __all__ = [
-    "FACTORS", "FLOOR_DB", "OPEN", "SHORT", "UNEXPLAINED",
+    "BRIDGE", "FACTORS", "FLOOR_DB", "OPEN", "SHORT", "STRAY", "UNEXPLAINED",
     "UnsolvableCandidate",
-    "candidates", "components", "describe", "explain", "format_value",
-    "localise", "match", "measure", "mna", "ngspice", "parse_value", "perturb",
-    "residual", "resolution", "resolvable", "signature",
+    "added", "additions", "attach", "build", "candidates", "components", "conclude",
+    "describe",
+    "diagnose", "explain", "format_si", "format_value", "judge", "localise", "match",
+    "measure", "mna", "ngspice", "parse_value", "perturb", "refine", "residual",
+    "resolution", "resolvable", "sharpen", "signature", "twins",
 ]

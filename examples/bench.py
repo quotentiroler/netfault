@@ -30,6 +30,7 @@ FACTORS = netfault.FACTORS
 
 # Below this the board is passing nothing and no ranking is meaningful.
 DEAD_BOARD_DB = -60.0
+LEAK_OHMS = 1e3
 
 
 def simulated_device(src, node, gain_db=-3.0, noise=0.0, seed=0):
@@ -73,9 +74,9 @@ def bench_devices(args, src):
 
     board = src
     if args.fault:
-        ref, _, factor = args.fault.partition(":")
-        board = netfault.perturb(src, ref, float(factor))
-        print(f"injected: {ref} x{factor}")
+        ref, _, value = args.fault.rpartition(":")
+        board = netfault.build(src, ref, netfault.parse_value(value))
+        print(f"injected: {ref} {netfault.describe(netfault.parse_value(value), ref)}")
     #
     # The fake bench gets a noise floor too.  A noiseless one is not a
     # preview of anything: every threshold here collapses and it reports
@@ -101,13 +102,13 @@ def report(v, parts, noise, ranked):
     if v["verdict"] == "ambiguous":
         nxt = ranked[1]
         if v["ref"] is None:
-            print(f"  CLOSE TO NOMINAL, but {nxt[1]} at {nxt[2]:g}x fits within"
-                  f" {v['margin']:.4f} dB of it.")
+            print(f"  CLOSE TO NOMINAL, but {nxt[1]} {netfault.describe(nxt[2], nxt[1])}"
+                  f" fits within {v['margin']:.4f} dB of it.")
             print("  This bench cannot tell those two apart.")
         else:
-            print(f"  AMBIGUOUS: {v['ref']} at {v['factor']:g}x fits, but only"
-                  f" {v['margin']:.4f} dB better than"
-                  f" {nxt[1] or 'nominal'} at {nxt[2]:g}x.")
+            print(f"  AMBIGUOUS: {v['ref']} {netfault.describe(v['factor'], v['ref'])} fits,"
+                  f" but only {v['margin']:.4f} dB better than"
+                  f" {nxt[1] or 'nominal'} {netfault.describe(nxt[2], nxt[1])}.")
         print("  Average longer (--seconds) or add points (--points).")
         return
 
@@ -115,16 +116,27 @@ def report(v, parts, noise, ranked):
         print(f"  the board matches the netlist ({v['residual']:.4f} dB)")
         return
 
-    d = netfault.describe(v["factor"])
-    if d in ("OPEN", "SHORT"):
-        print(f"  {v['ref']} is {d}  ({parts[v['ref']]['raw']} - check the"
-              " joint, check for a bridge)")
-    else:
-        print(f"  {v['ref']} at {v['factor']:g}x nominal"
-              f" ({parts[v['ref']]['value']:.3g} ->"
-              f" {parts[v['ref']]['value'] * v['factor']:.3g})")
+    print(f"  {what(v['ref'], v['factor'], parts)}")
+    for ref, value in v.get("twins", []):
+        print(f"  or, the same thing to any measurement: {what(ref, value, parts)}")
     print(f"  {v['residual']:.4f} dB residual, {v['margin']:.4f} dB clear of"
           " the next answer")
+
+
+def what(ref, value, parts):
+    """One answer, in the words somebody holding an iron would use."""
+    d = netfault.describe(value, ref)
+    if ref.startswith("+C"):
+        return (f"{d} more from {ref[3:-1]} to ground than the deck has: cable,"
+                " breadboard or the interface's input. Measure it, or add it to the deck")
+    if ref.startswith("+R"):
+        a, b = ref[3:-1].split(",")
+        cause = "look for a solder bridge" if value < LEAK_OHMS else "look for leakage or flux"
+        return f"{d} between {a} and {b}, which the deck does not connect: {cause}"
+    if d in ("OPEN", "SHORT"):
+        return f"{ref} is {d}  ({parts[ref]['raw']} - check the joint, check for a bridge)"
+    return (f"{ref} at {d} nominal ({parts[ref]['value']:.3g} ->"
+            f" {parts[ref]['value'] * value:.3g})")
 
 
 def printable(text):
@@ -169,8 +181,11 @@ def parse_args():
                     help="sounddevice id, 'in,out' - omit for the default")
     ap.add_argument("--simulate", action="store_true",
                     help="no hardware: run against the netlist itself")
-    ap.add_argument("--fault", default=None, metavar="REF:FACTOR",
-                    help="with --simulate, inject a known fault")
+    ap.add_argument("--fault", default=None, metavar="REF:VALUE",
+                    help="with --simulate, inject a known fault: C2:4.7, or what the "
+                         "deck lacks, +C(out):2.2n or +R(a,out):1")
+    ap.add_argument("--no-rig", action="store_true",
+                    help="only blame parts on the board, never stray capacitance or bridges")
     ap.add_argument("--exclude", default="",
                     help="parts that are not on the board and so cannot be "
                          "mis-fitted: the interface's own Rsrc, Rin, ...")
@@ -220,23 +235,26 @@ def main():
     if float(np.mean(meas)) < DEAD_BOARD_DB:
         print()
         print(f"  THE BOARD IS PASSING ALMOST NOTHING ({float(np.mean(meas)):.1f} dB mean).")
-        print("  That is an open somewhere in the signal path, or no board"
-              " in the loop.")
+        print("  That is an open in the signal path, a short to ground, or no"
+              " board in the loop.")
         print("  Check continuity end to end before measuring anything.")
         return 0
 
-    usable = netfault.resolvable(cands, max(noise, 1e-4))
+    floor = max(noise, 1e-4)
+    if not args.no_rig:
+        cands += netfault.additions(src, freqs, sim)
+    usable = netfault.resolvable(cands, floor)
     dropped = len(cands) - len(usable)
     if dropped:
         print(f"  {dropped} of {len(cands) - 1} candidates are below this bench's"
               " resolution and were not considered")
-    v = netfault.explain(usable, meas, noise_db=max(noise, 1e-4))
+    v = netfault.conclude(src, freqs, sim, meas, netfault.match(usable, meas), noise_db=floor)
     ranked = v["ranked"]
 
-    print(f"\n  {'part':<10} {'factor':<8} residual dB")
+    print(f"\n  {'answer':<14} {'value':<9} residual dB")
     for resid, ref, factor in ranked[:args.top]:
-        shown = "-" if ref is None else netfault.describe(factor)
-        print(f"  {ref or '(nominal)':<10} {shown:<8} {resid:.4f}")
+        shown = "-" if ref is None else netfault.describe(factor, ref)
+        print(f"  {ref or '(nominal)':<14} {shown:<9} {resid:.4f}")
 
     print()
     report(v, parts, noise, ranked)

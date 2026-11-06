@@ -33,3 +33,15 @@ def parse_value(text):
 def format_value(v):
     """A float back into something a deck will read the same way."""
     return f"{v:.6g}"
+
+
+_READABLE = (("meg", 1e6), ("k", 1e3), ("", 1.0), ("m", 1e-3), ("u", 1e-6),
+             ("n", 1e-9), ("p", 1e-12), ("f", 1e-15))
+
+
+def format_si(v):
+    """2.2e-09 -> '2.2n', 4700.0 -> '4.7k': for people, where format_value is for decks."""
+    for suffix, scale in _READABLE:
+        if abs(v) >= scale * 0.9995:
+            return f"{v / scale:.3g}{suffix}"
+    return f"{v:.3g}"

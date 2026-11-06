@@ -30,6 +30,7 @@ jobs:
       - run: python tests/test_levels.py
       - run: python tests/test_unsolvable.py
       - run: python tests/test_resolution.py
+      - run: python tests/test_rig.py
       # Skips itself where kicad-cli is absent, which is every hosted runner.
       - run: python tests/test_kicad.py
       - run: sudo apt-get update && sudo apt-get install -y ngspice

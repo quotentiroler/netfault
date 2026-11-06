@@ -63,8 +63,9 @@ ignore = [
 # Building a fault dictionary needs the deck, the frequencies, how to
 # simulate, which parts, which factors and which levels. All six are
 # independent inputs, and bundling them into a config object to satisfy a
-# count would hide the signature rather than simplify it.
-max-args = 8
+# count would hide the signature rather than simplify it. diagnose() takes
+# those plus the measurement, the bench's noise and how far to refine.
+max-args = 12
 max-positional-args = 6
 
 [tool.ruff.lint.mccabe]
